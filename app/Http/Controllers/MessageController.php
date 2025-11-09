@@ -26,11 +26,15 @@ class MessageController extends Controller
             'image' => 'nullable|file|mimes:jpg,jpeg,png,webp,mp4,pdf|max:10240',
         ]);
 
-        $path = null;
         if (!$request->filled('content') && !$request->hasFile('image')) {
             return response()->json([
                 'message' => 'Debes enviar texto o una imagen.',
             ], 422);
+        }
+
+        $path = null;
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store("messages", 'public');
         }
 
         $message = Message::create([
