@@ -57,4 +57,30 @@ class User extends Authenticatable
         return $this->hasMany(Conversation::class, 'user_one_id')
             ->orWhere('user_two_id', $this->id);
     }
+    public function skills()
+    {
+        return $this->belongsToMany(Skill::class, 'user_skills')
+            ->using(\App\Models\UserSkill::class)
+            ->withPivot('id', 'user_id', 'skill_id');
+    }
+
+    public function surprisesCreated()
+    {
+        return $this->hasMany(Surprise::class, 'creator_id');
+    }
+
+    public function surprisesAsGenius()
+    {
+        return $this->hasMany(Surprise::class, 'genius_id');
+    }
+
+    public function reviewsGiven()
+    {
+        return $this->hasMany(Review::class, 'reviewer_id');
+    }
+
+    public function reviewsReceived()
+    {
+        return $this->hasMany(Review::class, 'reviewed_user_id');
+    }
 }
