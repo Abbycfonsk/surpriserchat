@@ -34,17 +34,29 @@ class SurpriseController extends Controller
     // Crear una sorpresa
     public function store(Request $request)
     {
+        // 1. Validación de datos
         $validated = $request->validate([
             'creator_id' => 'required|exists:users,id',
             'genius_id' => 'nullable|exists:users,id',
             'title' => 'required|string',
             'description' => 'nullable|string',
-            'status' => 'required|string',
+            'status' => 'required|string|in:open,in_progress,delivered,completed,cancelled',
             'price' => 'nullable|numeric',
             'deadline' => 'nullable|date',
-            'skill_id' => 'required|exists:skills,id' // ← AÑADIDO
+            'skill_id' => 'required|exists:skills,id'
         ]);
 
+        // 2. Evitar que el creador y el genius sean la misma persona
+        if (!empty($validated['genius_id']) && $validated['creator_id'] == $validated['genius_id']) {
+            return response()->json([
+                'error' => 'Creator and genius cannot be the same user'
+            ], 400);
+        }
+
+        // 3. Forzar que una sorpresa nueva SIEMPRE empiece en "open"
+        $validated['status'] = 'open';
+
+        // 4. Crear la sorpresa
         $surprise = Surprise::create($validated);
 
         return response()->json([
@@ -84,6 +96,96 @@ class SurpriseController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Surprise updated successfully',
+            'data' => $surprise
+        ]);
+    }
+    public function accept($id)
+    {
+        $surprise = Surprise::findOrFail($id);
+
+        if ($surprise->status !== 'open') {
+            return response()->json(['error' => 'Surprise is not open'], 400);
+        }
+
+        if (!$surprise->genius_id) {
+            return response()->json(['error' => 'No genius assigned'], 400);
+        }
+
+        $surprise->status = 'in_progress';
+        $surprise->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Surprise accepted and now in progress',
+            'data' => $surprise
+        ]);
+    }
+    public function start($id)
+    {
+        $surprise = Surprise::findOrFail($id);
+
+        if ($surprise->status !== 'in_progress') {
+            return response()->json(['error' => 'Surprise is not in progress'], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Work started',
+            'data' => $surprise
+        ]);
+    }
+    public function deliver(Request $request, $id)
+    {
+        $surprise = Surprise::findOrFail($id);
+
+        if ($surprise->status !== 'in_progress') {
+            return response()->json(['error' => 'Surprise is not in progress'], 400);
+        }
+
+        $surprise->status = 'delivered';
+        $surprise->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Surprise delivered',
+            'data' => $surprise
+        ]);
+    }
+    public function complete($id)
+    {
+        $surprise = Surprise::findOrFail($id);
+
+        if ($surprise->status !== 'delivered') {
+            return response()->json(['error' => 'Surprise is not delivered'], 400);
+        }
+
+        $surprise->status = 'completed';
+        $surprise->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Surprise completed successfully',
+            'data' => $surprise
+        ]);
+    }
+    public function cancel($id)
+    {
+        $surprise = Surprise::findOrFail($id);
+
+        if ($surprise->status === 'completed') {
+            return response()->json(['error' => 'Cannot cancel a completed surprise'], 400);
+        }
+
+        if ($surprise->status === 'delivered') {
+            return response()->json(['error' => 'Cannot cancel a delivered surprise'], 400);
+        }
+
+        $surprise->status = 'cancelled';
+        $surprise->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Surprise cancelled',
             'data' => $surprise
         ]);
     }

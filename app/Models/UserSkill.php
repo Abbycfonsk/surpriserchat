@@ -8,6 +8,7 @@ use App\Models\Surprise;
 class UserSkill extends Pivot
 {
     public $timestamps = false;
+    protected $table = 'user_skills';
 
     protected $fillable = ['user_id', 'skill_id'];
 

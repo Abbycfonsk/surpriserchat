@@ -35,7 +35,26 @@ Route::post('/users/{id}/skills', [SkillController::class, 'assignSkill']);
 Route::delete('/users/{id}/skills/{skillId}', [SkillController::class, 'removeSkill']);
 Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
 
+Route::get('/users/{user}/skills/{skill}/progress', [\App\Http\Controllers\UserSkillController::class, 'progress']); /*solo se usa Use arriba si el nombre del controlador no lleva ruta, sino asi te evitas poner un Use */
+Route::get('/users/{user}/skills/progress', [\App\Http\Controllers\UserSkillController::class, 'allProgress']);
+Route::get('/skills/{skill}/ranking', [\App\Http\Controllers\UserSkillController::class, 'ranking']);
+Route::get('/users/{user}/skills/{skill}/history', [\App\Http\Controllers\UserSkillController::class, 'history']);
+Route::get('/users/{user}/level', [\App\Http\Controllers\UserSkillController::class, 'globalLevel']);
+Route::get('/users/{user}/skills/dashboard', [\App\Http\Controllers\UserSkillController::class, 'dashboard']);
 
+Route::post('/surprises/{id}/accept', [SurpriseController::class, 'accept']);
+Route::post('/surprises/{id}/start', [SurpriseController::class, 'start']);
+Route::post('/surprises/{id}/deliver', [SurpriseController::class, 'deliver']);
+Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete']);
+Route::post('/surprises/{id}/cancel', [SurpriseController::class, 'cancel']);
+
+Route::post('/surprises/{id}/review', [\App\Http\Controllers\ReviewController::class, 'store']);
+Route::get('/users/{id}/reviews', [\App\Http\Controllers\ReviewController::class, 'byUser']);
+Route::get('/users/{id}/rating', [\App\Http\Controllers\ReviewController::class, 'rating']);
+
+Route::get('/users/{id}/dashboard', [\App\Http\Controllers\UserController::class, 'dashboard']);
+
+Route::get('/skills/{skillId}/genius-suggestions', [\App\Http\Controllers\GeniusController::class, 'suggest']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
