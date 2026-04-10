@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SurpriseController;
 use App\Http\Controllers\SkillController;
+use App\Http\Controllers\NotificationController;
 
 // Ruta de prueba
 /*Route::get('/ping', function () {
@@ -55,6 +56,22 @@ Route::get('/users/{id}/rating', [\App\Http\Controllers\ReviewController::class,
 Route::get('/users/{id}/dashboard', [\App\Http\Controllers\UserController::class, 'dashboard']);
 
 Route::get('/skills/{skillId}/genius-suggestions', [\App\Http\Controllers\GeniusController::class, 'suggest']);
+
+Route::post('/surprises/{id}/files', [\App\Http\Controllers\SurpriseFileController::class, 'store']);
+Route::get('/surprises/{id}/files', [\App\Http\Controllers\SurpriseFileController::class, 'index']);
+Route::get('/files/{id}/download', [\App\Http\Controllers\SurpriseFileController::class, 'download']);
+
+// Ofertas
+Route::post('/surprises/{id}/offers', [\App\Http\Controllers\OfferController::class, 'store']);
+Route::get('/surprises/{id}/offers', [\App\Http\Controllers\OfferController::class, 'listBySurprise']);
+Route::post('/offers/{id}/accept', [\App\Http\Controllers\OfferController::class, 'accept']);
+
+
+
+// Notificaciones
+Route::get('/users/{id}/notifications', [NotificationController::class, 'index']);
+Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

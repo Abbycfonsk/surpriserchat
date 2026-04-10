@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Surprise;
 use App\Models\SurpriseFile;
 use Illuminate\Http\Request;
+use App\Helpers\Notify;
 
 class SurpriseController extends Controller
 {
@@ -34,7 +35,6 @@ class SurpriseController extends Controller
     // Crear una sorpresa
     public function store(Request $request)
     {
-        // 1. Validación de datos
         $validated = $request->validate([
             'creator_id' => 'required|exists:users,id',
             'genius_id' => 'nullable|exists:users,id',
@@ -46,18 +46,24 @@ class SurpriseController extends Controller
             'skill_id' => 'required|exists:skills,id'
         ]);
 
-        // 2. Evitar que el creador y el genius sean la misma persona
         if (!empty($validated['genius_id']) && $validated['creator_id'] == $validated['genius_id']) {
             return response()->json([
                 'error' => 'Creator and genius cannot be the same user'
             ], 400);
         }
 
-        // 3. Forzar que una sorpresa nueva SIEMPRE empiece en "open"
+        // Siempre empieza en open
         $validated['status'] = 'open';
 
-        // 4. Crear la sorpresa
         $surprise = Surprise::create($validated);
+
+        // 🔔 Notificación: sorpresa creada
+        Notify::send(
+            $surprise->creator_id,
+            'Sorpresa creada',
+            'Tu sorpresa ha sido creada correctamente.',
+            'success'
+        );
 
         return response()->json([
             'success' => true,
@@ -65,6 +71,7 @@ class SurpriseController extends Controller
             'data' => $surprise
         ]);
     }
+
     // Actualizar una sorpresa
     public function update(Request $request, $id)
     {
@@ -79,15 +86,21 @@ class SurpriseController extends Controller
             'deadline' => 'nullable|date',
         ]);
 
-        // Actualizamos la sorpresa
         $surprise->update($validated);
 
-        // Si se asigna un genius, asignamos el skill automáticamente
+        // Si se asigna un genius
         if (isset($validated['genius_id'])) {
 
-            $genius = $surprise->genius; // usuario que realiza la sorpresa
+            // 🔔 Notificación: nueva sorpresa asignada
+            Notify::send(
+                $validated['genius_id'],
+                'Nueva sorpresa asignada',
+                'Te han asignado una nueva sorpresa.',
+                'info'
+            );
 
-            // Si el genius existe y no tiene ese skill, se lo añadimos
+            $genius = $surprise->genius;
+
             if ($genius && !$genius->skills()->where('skill_id', $surprise->skill_id)->exists()) {
                 $genius->skills()->attach($surprise->skill_id);
             }
@@ -99,6 +112,8 @@ class SurpriseController extends Controller
             'data' => $surprise
         ]);
     }
+
+    // Genius acepta la sorpresa
     public function accept($id)
     {
         $surprise = Surprise::findOrFail($id);
@@ -114,12 +129,21 @@ class SurpriseController extends Controller
         $surprise->status = 'in_progress';
         $surprise->save();
 
+        // 🔔 Notificación: el genius aceptó la sorpresa
+        Notify::send(
+            $surprise->creator_id,
+            'Sorpresa aceptada',
+            'El genius ha aceptado tu sorpresa.',
+            'success'
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Surprise accepted and now in progress',
             'data' => $surprise
         ]);
     }
+
     public function start($id)
     {
         $surprise = Surprise::findOrFail($id);
@@ -134,6 +158,8 @@ class SurpriseController extends Controller
             'data' => $surprise
         ]);
     }
+
+    // Genius entrega la sorpresa
     public function deliver(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
@@ -145,12 +171,22 @@ class SurpriseController extends Controller
         $surprise->status = 'delivered';
         $surprise->save();
 
+        // 🔔 Notificación: sorpresa entregada
+        Notify::send(
+            $surprise->creator_id,
+            'Sorpresa entregada',
+            'El genius ha entregado tu sorpresa.',
+            'success'
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Surprise delivered',
             'data' => $surprise
         ]);
     }
+
+    // Creador completa la sorpresa
     public function complete($id)
     {
         $surprise = Surprise::findOrFail($id);
@@ -162,12 +198,21 @@ class SurpriseController extends Controller
         $surprise->status = 'completed';
         $surprise->save();
 
+        // 🔔 Notificación: sorpresa completada
+        Notify::send(
+            $surprise->genius_id,
+            'Sorpresa completada',
+            'El creador ha marcado la sorpresa como completada.',
+            'success'
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Surprise completed successfully',
             'data' => $surprise
         ]);
     }
+
     public function cancel($id)
     {
         $surprise = Surprise::findOrFail($id);
@@ -202,7 +247,7 @@ class SurpriseController extends Controller
         ]);
     }
 
-    // Añadir archivos a una sorpresa
+    // Añadir archivos a una sorpresa (versión antigua)
     public function addFile(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);

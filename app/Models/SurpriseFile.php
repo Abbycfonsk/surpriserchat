@@ -11,6 +11,10 @@ class SurpriseFile extends Model
 
     protected $fillable = [
         'surprise_id',
+        'filename',
+        'path',
+        'mime',
+        'size',
         'file_url',
         'file_type',
     ];

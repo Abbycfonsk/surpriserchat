@@ -27,6 +27,10 @@ class Surprise extends Model
     {
         return $this->belongsTo(User::class, 'genius_id');
     }
+    public function offers()
+    {
+        return $this->hasMany(Offer::class);
+    }
 
     public function files()
     {

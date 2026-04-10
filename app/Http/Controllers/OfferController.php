@@ -1,0 +1,109 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Offer;
+use App\Models\Surprise;
+use Illuminate\Http\Request;
+use App\Helpers\Notify;
+
+class OfferController extends Controller
+{
+    // Genius envía una oferta
+    public function store(Request $request, $surpriseId)
+    {
+        $surprise = Surprise::findOrFail($surpriseId);
+
+        $validated = $request->validate([
+            'genius_id' => 'required|exists:users,id',
+            'price' => 'required|numeric|min:1',
+            'message' => 'nullable|string',
+            'eta_hours' => 'nullable|integer|min:1'
+        ]);
+
+        // Crear oferta
+        $offer = Offer::create([
+            'surprise_id' => $surprise->id,
+            'genius_id' => $validated['genius_id'],
+            'price' => $validated['price'],
+            'message' => $validated['message'] ?? null,
+            'eta_hours' => $validated['eta_hours'] ?? null,
+        ]);
+
+        // Notificación al creador
+        Notify::send(
+            $surprise->creator_id,
+            'Nueva oferta recibida',
+            'Un genius ha enviado una oferta para tu sorpresa.',
+            'info'
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Offer sent successfully',
+            'data' => $offer
+        ]);
+    }
+
+    // Listar ofertas de una sorpresa
+    public function listBySurprise($surpriseId)
+    {
+        $offers = Offer::where('surprise_id', $surpriseId)
+            ->with('genius')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $offers
+        ]);
+    }
+
+    // Creador acepta una oferta
+    public function accept($offerId)
+    {
+        $offer = Offer::with('surprise')->findOrFail($offerId);
+        $surprise = $offer->surprise;
+
+        // Marcar oferta como aceptada
+        $offer->status = 'accepted';
+        $offer->save();
+
+        // Asignar genius a la sorpresa
+        $surprise->genius_id = $offer->genius_id;
+        $surprise->status = 'in_progress';
+        $surprise->save();
+
+        // Rechazar automáticamente las demás ofertas
+        Offer::where('surprise_id', $surprise->id)
+            ->where('id', '!=', $offer->id)
+            ->update(['status' => 'rejected']);
+
+        // Notificación al genius ganador
+        Notify::send(
+            $offer->genius_id,
+            'Oferta aceptada',
+            'Tu oferta ha sido aceptada. ¡Empieza la sorpresa!',
+            'success'
+        );
+
+        // Notificación a los demás genius
+        $otherOffers = Offer::where('surprise_id', $surprise->id)
+            ->where('status', 'rejected')
+            ->get();
+
+        foreach ($otherOffers as $o) {
+            Notify::send(
+                $o->genius_id,
+                'Oferta rechazada',
+                'La sorpresa ha sido asignada a otro genius.',
+                'info'
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Offer accepted and genius assigned',
+            'data' => $offer
+        ]);
+    }
+}
