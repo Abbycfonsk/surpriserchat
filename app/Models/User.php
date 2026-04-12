@@ -2,43 +2,31 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Models\GeniusPointEvent;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, HasApiTokens, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'name',
         'email',
         'password',
+        // IMPORTANTE: añade aquí tus campos de genius si quieres asignarlos masivamente
+        // 'genius_level',
+        // 'genius_points',
+        // ...
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -47,6 +35,7 @@ class User extends Authenticatable
         ];
     }
 
+    // Relaciones
     public function messages()
     {
         return $this->hasMany(Message::class, 'sender_id');
@@ -57,6 +46,7 @@ class User extends Authenticatable
         return $this->hasMany(Conversation::class, 'user_one_id')
             ->orWhere('user_two_id', $this->id);
     }
+
     public function skills()
     {
         return $this->belongsToMany(Skill::class, 'user_skills')
@@ -78,13 +68,60 @@ class User extends Authenticatable
     {
         return $this->hasMany(Review::class, 'reviewer_id');
     }
+
+    public function reviewsReceived()
+    {
+        return $this->hasMany(Review::class, 'reviewed_user_id');
+    }
+
     public function offers()
     {
         return $this->hasMany(Offer::class, 'genius_id');
     }
 
-    public function reviewsReceived()
+    public function pointEvents()
     {
-        return $this->hasMany(Review::class, 'reviewed_user_id');
+        return $this->hasMany(GeniusPointEvent::class, 'genius_id');
+    }
+
+    /* ============================
+       PRIVILEGIOS SEGÚN NIVEL
+       ============================ */
+
+    public function canReceiveInitialPayment(): bool
+    {
+        return in_array($this->genius_level, ['GENIE', 'SULTAN']);
+    }
+
+    public function allowedSurpriseSizes(): array
+    {
+        return match ($this->genius_level) {
+            'SPARK' => ['SMALL'],
+            'FLAME' => ['SMALL', 'MEDIUM'],
+            'GENIE' => ['SMALL', 'MEDIUM', 'LARGE'],
+            'SULTAN' => ['SMALL', 'MEDIUM', 'LARGE', 'PREMIUM'],
+            default => [],
+        };
+    }
+
+    public function maxActiveSurprises(): int
+    {
+        return match ($this->genius_level) {
+            'SPARK' => 1,
+            'FLAME' => 2,
+            'GENIE' => 5,
+            'SULTAN' => 10,
+            default => 0,
+        };
+    }
+
+    public function canAcceptUrgent(): bool
+    {
+        return in_array($this->genius_level, ['FLAME', 'GENIE', 'SULTAN']);
+    }
+
+    public function canAcceptPremium(): bool
+    {
+        return $this->genius_level === 'SULTAN';
     }
 }

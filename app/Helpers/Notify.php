@@ -17,6 +17,12 @@ class Notify
         ]);
     }
 
+    // 🔥 MÉTODO QUE TE FALTABA
+    public static function send($userId, $title, $message, $type = 'info')
+    {
+        return self::sendNotification($userId, $title, $message, $type);
+    }
+
     // Notificación de éxito
     public static function success($userId, $title, $message)
     {

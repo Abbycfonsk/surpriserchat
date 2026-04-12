@@ -6,9 +6,17 @@ use App\Models\Surprise;
 use App\Models\SurpriseFile;
 use Illuminate\Http\Request;
 use App\Helpers\Notify;
+use App\Services\GeniusLevelService;
 
 class SurpriseController extends Controller
 {
+    protected $geniusLevelService;
+
+    public function __construct(GeniusLevelService $geniusLevelService)
+    {
+        $this->geniusLevelService = $geniusLevelService;
+    }
+
     // Listar todas las sorpresas
     public function index()
     {
@@ -43,7 +51,9 @@ class SurpriseController extends Controller
             'status' => 'required|string|in:open,in_progress,delivered,completed,cancelled',
             'price' => 'nullable|numeric',
             'deadline' => 'nullable|date',
-            'skill_id' => 'required|exists:skills,id'
+            'skill_id' => 'required|exists:skills,id',
+            'size' => 'required|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
+            'is_urgent' => 'nullable|boolean'
         ]);
 
         if (!empty($validated['genius_id']) && $validated['creator_id'] == $validated['genius_id']) {
@@ -84,6 +94,8 @@ class SurpriseController extends Controller
             'status' => 'nullable|string',
             'price' => 'nullable|numeric',
             'deadline' => 'nullable|date',
+            'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
+            'is_urgent' => 'nullable|boolean'
         ]);
 
         $surprise->update($validated);
@@ -126,10 +138,44 @@ class SurpriseController extends Controller
             return response()->json(['error' => 'No genius assigned'], 400);
         }
 
+        $genius = $surprise->genius;
+
+        // ⭐ 1) Límite por tamaño
+        if (!in_array($surprise->size, $genius->allowedSurpriseSizes())) {
+            return response()->json([
+                'error' => 'Your level does not allow you to accept this type of surprise'
+            ], 403);
+        }
+
+        // ⭐ 2) Límite por urgencia
+        if ($surprise->is_urgent && !$genius->canAcceptUrgent()) {
+            return response()->json([
+                'error' => 'Your level does not allow you to accept urgent surprises'
+            ], 403);
+        }
+
+        // ⭐ 3) Límite por premium
+        if ($surprise->size === 'PREMIUM' && !$genius->canAcceptPremium()) {
+            return response()->json([
+                'error' => 'Only SULTAN level can accept premium surprises'
+            ], 403);
+        }
+
+        // ⭐ 4) Límite por número de sorpresas activas
+        $activeCount = Surprise::where('genius_id', $genius->id)
+            ->whereIn('status', ['open', 'in_progress', 'delivered'])
+            ->count();
+
+        if ($activeCount >= $genius->maxActiveSurprises()) {
+            return response()->json([
+                'error' => 'You have reached your maximum number of active surprises'
+            ], 403);
+        }
+
+        // Si pasa todos los límites → puede aceptar
         $surprise->status = 'in_progress';
         $surprise->save();
 
-        // 🔔 Notificación: el genius aceptó la sorpresa
         Notify::send(
             $surprise->creator_id,
             'Sorpresa aceptada',
@@ -152,6 +198,13 @@ class SurpriseController extends Controller
             return response()->json(['error' => 'Surprise is not in progress'], 400);
         }
 
+        $genius = $surprise->genius;
+
+        // Revalidar límites por seguridad
+        if (!in_array($surprise->size, $genius->allowedSurpriseSizes())) {
+            return response()->json(['error' => 'You cannot work on this type of surprise'], 403);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Work started',
@@ -166,6 +219,13 @@ class SurpriseController extends Controller
 
         if ($surprise->status !== 'in_progress') {
             return response()->json(['error' => 'Surprise is not in progress'], 400);
+        }
+
+        $genius = $surprise->genius;
+
+        // Revalidar límites por seguridad
+        if (!in_array($surprise->size, $genius->allowedSurpriseSizes())) {
+            return response()->json(['error' => 'You cannot deliver this type of surprise'], 403);
         }
 
         $surprise->status = 'delivered';
@@ -196,6 +256,7 @@ class SurpriseController extends Controller
         }
 
         $surprise->status = 'completed';
+        $surprise->completed_at = now();
         $surprise->save();
 
         // 🔔 Notificación: sorpresa completada
@@ -205,6 +266,25 @@ class SurpriseController extends Controller
             'El creador ha marcado la sorpresa como completada.',
             'success'
         );
+
+        // ⭐⭐⭐ LÓGICA DE PUNTOS Y NIVELES ⭐⭐⭐
+
+        $genius = $surprise->genius;
+
+        // +5 por completar
+        $this->geniusLevelService->addPoints($genius, 5, 'COMPLETE', $surprise);
+
+        // rating
+        if ($surprise->rating_for_genius == 5) {
+            $this->geniusLevelService->addPoints($genius, 3, 'RATING_5', $surprise);
+        } elseif ($surprise->rating_for_genius == 4) {
+            $this->geniusLevelService->addPoints($genius, 1, 'RATING_4', $surprise);
+        }
+
+        // entrega antes de tiempo
+        if ($surprise->deadline && $surprise->completed_at < $surprise->deadline) {
+            $this->geniusLevelService->addPoints($genius, 2, 'EARLY_DELIVERY', $surprise);
+        }
 
         return response()->json([
             'success' => true,
@@ -247,7 +327,7 @@ class SurpriseController extends Controller
         ]);
     }
 
-    // Añadir archivos a una sorpresa (versión antigua)
+    // Añadir archivos a una sorpresa
     public function addFile(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
