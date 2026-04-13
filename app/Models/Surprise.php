@@ -11,12 +11,22 @@ class Surprise extends Model
     protected $fillable = [
         'creator_id',
         'genius_id',
+        'skill_id',
         'title',
         'description',
         'status',
         'price',
         'deadline',
-        'skill_id' // ← AÑADIDO
+        'size',
+        'is_urgent',
+        'target_name',
+        'target_city',
+        'target_country',
+        'target_lat',
+        'target_lng',
+        'price_creator',
+        'price_genius',
+        'final_price'
     ];
     public function creator()
     {

@@ -86,106 +86,91 @@ class SurpriseController extends Controller
     public function update(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
+        $user = $request->user();
 
-        $validated = $request->validate([
-            'genius_id' => 'nullable|exists:users,id',
-            'title' => 'nullable|string',
-            'description' => 'nullable|string',
-            'status' => 'nullable|string',
-            'price' => 'nullable|numeric',
-            'deadline' => 'nullable|date',
-            'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
-            'is_urgent' => 'nullable|boolean'
-        ]);
+        $isCreator = $user->id === $surprise->creator_id;
+        $isGenius = $user->id === $surprise->genius_id;
 
+        // ❌ El genio NO puede modificar la sorpresa
+        if ($isGenius) {
+            return response()->json([
+                'error' => 'Genius cannot modify surprise details'
+            ], 403);
+        }
+
+        // ❌ Nadie puede modificar una sorpresa completada
+        if ($surprise->status === 'completed') {
+            return response()->json([
+                'error' => 'Completed surprises cannot be modified'
+            ], 400);
+        }
+
+        // ❌ Nadie puede modificar una sorpresa entregada
+        if ($surprise->status === 'delivered') {
+            return response()->json([
+                'error' => 'Delivered surprises cannot be modified'
+            ], 400);
+        }
+
+        // Solo el creador puede modificar
+        if (!$isCreator) {
+            return response()->json([
+                'error' => 'Only the creator can modify the surprise'
+            ], 403);
+        }
+
+        // VALIDACIÓN SEGÚN ESTADO
+        $rules = [];
+
+        if ($surprise->status === 'open') {
+            // El creador puede modificar casi todo
+            $rules = [
+                'title' => 'nullable|string|max:200',
+                'description' => 'nullable|string',
+                'price' => 'nullable|numeric|min:1',
+                'deadline' => 'nullable|date',
+                'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
+                'is_urgent' => 'nullable|boolean',
+                'target_name' => 'nullable|string|max:100',
+                'target_city' => 'nullable|string|max:100',
+                'target_country' => 'nullable|string|max:100',
+                'target_lat' => 'nullable|numeric',
+                'target_lng' => 'nullable|numeric'
+            ];
+        }
+
+        if ($surprise->status === 'in_progress') {
+            // El creador solo puede aclarar cosas o extender deadline
+            $rules = [
+                'description' => 'nullable|string',
+                'deadline' => 'nullable|date|after_or_equal:today'
+            ];
+        }
+
+        $validated = $request->validate($rules);
+
+        // ❌ Nunca permitir cambiar el estado manualmente
+        unset($validated['status']);
+
+        // ❌ Nunca permitir asignar genio manualmente
+        unset($validated['genius_id']);
+
+        // Actualizar sorpresa
         $surprise->update($validated);
 
-        // Si se asigna un genius
-        if (isset($validated['genius_id'])) {
-
-            // 🔔 Notificación: nueva sorpresa asignada
+        // Notificación opcional si cambia el deadline
+        if (isset($validated['deadline']) && $surprise->genius_id) {
             Notify::send(
-                $validated['genius_id'],
-                'Nueva sorpresa asignada',
-                'Te han asignado una nueva sorpresa.',
+                $surprise->genius_id,
+                'Deadline actualizado',
+                'El creador ha actualizado la fecha límite de la sorpresa.',
                 'info'
             );
-
-            $genius = $surprise->genius;
-
-            if ($genius && !$genius->skills()->where('skill_id', $surprise->skill_id)->exists()) {
-                $genius->skills()->attach($surprise->skill_id);
-            }
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Surprise updated successfully',
-            'data' => $surprise
-        ]);
-    }
-
-    // Genius acepta la sorpresa
-    public function accept($id)
-    {
-        $surprise = Surprise::findOrFail($id);
-
-        if ($surprise->status !== 'open') {
-            return response()->json(['error' => 'Surprise is not open'], 400);
-        }
-
-        if (!$surprise->genius_id) {
-            return response()->json(['error' => 'No genius assigned'], 400);
-        }
-
-        $genius = $surprise->genius;
-
-        // ⭐ 1) Límite por tamaño
-        if (!in_array($surprise->size, $genius->allowedSurpriseSizes())) {
-            return response()->json([
-                'error' => 'Your level does not allow you to accept this type of surprise'
-            ], 403);
-        }
-
-        // ⭐ 2) Límite por urgencia
-        if ($surprise->is_urgent && !$genius->canAcceptUrgent()) {
-            return response()->json([
-                'error' => 'Your level does not allow you to accept urgent surprises'
-            ], 403);
-        }
-
-        // ⭐ 3) Límite por premium
-        if ($surprise->size === 'PREMIUM' && !$genius->canAcceptPremium()) {
-            return response()->json([
-                'error' => 'Only SULTAN level can accept premium surprises'
-            ], 403);
-        }
-
-        // ⭐ 4) Límite por número de sorpresas activas
-        $activeCount = Surprise::where('genius_id', $genius->id)
-            ->whereIn('status', ['open', 'in_progress', 'delivered'])
-            ->count();
-
-        if ($activeCount >= $genius->maxActiveSurprises()) {
-            return response()->json([
-                'error' => 'You have reached your maximum number of active surprises'
-            ], 403);
-        }
-
-        // Si pasa todos los límites → puede aceptar
-        $surprise->status = 'in_progress';
-        $surprise->save();
-
-        Notify::send(
-            $surprise->creator_id,
-            'Sorpresa aceptada',
-            'El genius ha aceptado tu sorpresa.',
-            'success'
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Surprise accepted and now in progress',
             'data' => $surprise
         ]);
     }
