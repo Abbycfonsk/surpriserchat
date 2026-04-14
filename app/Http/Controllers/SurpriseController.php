@@ -234,47 +234,22 @@ class SurpriseController extends Controller
     // Creador completa la sorpresa
     public function complete($id)
     {
-        $surprise = Surprise::findOrFail($id);
+        $surprise = Surprise::with('genius')->findOrFail($id);
 
-        if ($surprise->status !== 'delivered') {
-            return response()->json(['error' => 'Surprise is not delivered'], 400);
-        }
+        $surprise->update([
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
 
-        $surprise->status = 'completed';
-        $surprise->completed_at = now();
-        $surprise->save();
+        // 1) Activar skill si no estaba activa
+        $this->activateSkill($surprise);
 
-        // 🔔 Notificación: sorpresa completada
-        Notify::send(
-            $surprise->genius_id,
-            'Sorpresa completada',
-            'El creador ha marcado la sorpresa como completada.',
-            'success'
-        );
-
-        // ⭐⭐⭐ LÓGICA DE PUNTOS Y NIVELES ⭐⭐⭐
-
-        $genius = $surprise->genius;
-
-        // +5 por completar
-        $this->geniusLevelService->addPoints($genius, 5, 'COMPLETE', $surprise);
-
-        // rating
-        if ($surprise->rating_for_genius == 5) {
-            $this->geniusLevelService->addPoints($genius, 3, 'RATING_5', $surprise);
-        } elseif ($surprise->rating_for_genius == 4) {
-            $this->geniusLevelService->addPoints($genius, 1, 'RATING_4', $surprise);
-        }
-
-        // entrega antes de tiempo
-        if ($surprise->deadline && $surprise->completed_at < $surprise->deadline) {
-            $this->geniusLevelService->addPoints($genius, 2, 'EARLY_DELIVERY', $surprise);
-        }
+        // 2) Sumar XP y subir nivel si corresponde
+        $this->addExperience($surprise);
 
         return response()->json([
             'success' => true,
-            'message' => 'Surprise completed successfully',
-            'data' => $surprise
+            'message' => 'Surprise completed and skills updated'
         ]);
     }
 
@@ -359,5 +334,70 @@ class SurpriseController extends Controller
             'success' => true,
             'data' => $surprises
         ]);
+    }
+    private function activateSkill(Surprise $surprise)
+    {
+        $genius = $surprise->genius;
+        $skillId = $surprise->skill_id;
+
+        if (!$genius || !$skillId) {
+            return;
+        }
+
+        // Si ya está activa, no hacemos nada
+        if ($genius->activeSkills()->where('skill_id', $skillId)->exists()) {
+            return;
+        }
+
+        // Activar skill con nivel 1 y XP 0
+        $genius->activeSkills()->attach($skillId, [
+            'level' => 1,
+            'xp' => 0,
+        ]);
+    }
+
+    private function addExperience(Surprise $surprise)
+    {
+        $genius = $surprise->genius;
+        $skillId = $surprise->skill_id;
+
+        if (!$genius || !$skillId) {
+            return;
+        }
+
+        $skill = $genius->activeSkills()->where('skill_id', $skillId)->first();
+
+        if (!$skill) {
+            return;
+        }
+
+        $pivot = $skill->pivot;
+
+        $xp = 10; // base
+
+        // Tamaño
+        if ($surprise->size === 'MEDIUM') $xp += 10;
+        if ($surprise->size === 'LARGE') $xp += 20;
+        if ($surprise->size === 'PREMIUM') $xp += 40;
+
+        // Urgente
+        if ($surprise->is_urgent) $xp += 15;
+
+        // Valoración
+        if (!is_null($surprise->rating_for_genius)) {
+            if ($surprise->rating_for_genius >= 4) $xp += 10;
+            if ($surprise->rating_for_genius == 5) $xp += 20;
+            if ($surprise->rating_for_genius <= 2) $xp = 0; // mala valoración → no gana XP
+        }
+
+        $pivot->xp += $xp;
+
+        // Subir nivel cada 100 XP
+        while ($pivot->xp >= 100) {
+            $pivot->level++;
+            $pivot->xp -= 100;
+        }
+
+        $pivot->save();
     }
 }

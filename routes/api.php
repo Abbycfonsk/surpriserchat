@@ -10,6 +10,7 @@ use App\Http\Controllers\SkillController;
 use App\Http\Controllers\NotificationController;
 use App\Models\Surprise;
 use App\Models\User;
+use App\Http\Controllers\TopSkillController;
 
 // Ruta de prueba
 /*Route::get('/ping', function () {
@@ -70,10 +71,29 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/{id}/notifications', [NotificationController::class, 'index']); //LISTAR LAS NOTIFICACIONES DE UN USUARIO
     Route::get('/users/{id}/reviews', [\App\Http\Controllers\ReviewController::class, 'byUser']); //LISTAR RESEÑAS DE UN USUARIO
     Route::get('/surprises', [SurpriseController::class, 'index']); // LISTADO DE TODAS LAS SORPRESAS EN TODOS LOS ESTADOS Y DE TODOS LOS USUARIOS
+    Route::get('/surprises/{id}', [SurpriseController::class, 'show']); //BUSCA UNA SORPRESA POR SU ID
+    Route::get('/users/{id}/surprises-created', [SurpriseController::class, 'byCreator']); //LISTAR LAS SORPRESAS CREADAS POR UN USUSARIO CONCRETO
+    Route::get('/users/{id}/surprises-genius', [SurpriseController::class, 'byGenius']); //LISTA LAS SOPRESAS DONDE EL USUSARIO ACTUÓ COMO GENIO
 
 
 
 
+
+
+
+
+    Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete'])
+        ->middleware('auth:sanctum');
+
+
+    Route::get('/skills/{skillId}/top', [TopSkillController::class, 'topBySkill']); //LISTA TOP10 DE USUARIO X SKILL
+
+    // Ver skills (propuestas + activas)
+    Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
+
+    // Actualizar skills propuestas (genio)
+    Route::post('/users/{id}/proposed-skills', [SkillController::class, 'updateProposedSkills'])
+        ->middleware('auth:sanctum');
 
     // Ofertas
     Route::post('/surprises/{id}/offers', [\App\Http\Controllers\OfferController::class, 'store']);
@@ -81,27 +101,30 @@ Route::middleware('auth:sanctum')->group(function () {
     // Notificaciones
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-    Route::get('/surprises/{id}', [SurpriseController::class, 'show']);
+
     Route::delete('/surprises/{id}', [SurpriseController::class, 'destroy']);
     Route::post('/surprises/{id}/files', [SurpriseController::class, 'addFile']);
-    Route::get('/users/{id}/surprises-created', [SurpriseController::class, 'byCreator']);
-    Route::get('/users/{id}/surprises-genius', [SurpriseController::class, 'byGenius']);
+    Route::post('/surprises/{id}/start', [SurpriseController::class, 'start']);
+    Route::post('/surprises/{id}/deliver', [SurpriseController::class, 'deliver']);
+    Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete']);
+    Route::post('/surprises/{id}/cancel', [SurpriseController::class, 'cancel']);
+
     Route::post('/users/{id}/skills', [SkillController::class, 'assignSkill']);
     Route::delete('/users/{id}/skills/{skillId}', [SkillController::class, 'removeSkill']);
     Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
+
     Route::get('/users/{user}/skills/{skill}/progress', [\App\Http\Controllers\UserSkillController::class, 'progress']); /*solo se usa Use arriba si el nombre del controlador no lleva ruta, sino asi te evitas poner un Use */
     Route::get('/users/{user}/skills/progress', [\App\Http\Controllers\UserSkillController::class, 'allProgress']);
     Route::get('/skills/{skill}/ranking', [\App\Http\Controllers\UserSkillController::class, 'ranking']);
     Route::get('/users/{user}/skills/{skill}/history', [\App\Http\Controllers\UserSkillController::class, 'history']);
     Route::get('/users/{user}/level', [\App\Http\Controllers\UserSkillController::class, 'globalLevel']);
     Route::get('/users/{user}/skills/dashboard', [\App\Http\Controllers\UserSkillController::class, 'dashboard']);
+
     Route::get('/skills/{skillId}/genius-suggestions', [\App\Http\Controllers\GeniusController::class, 'suggest']);
+
     Route::post('/surprises/{id}/files', [\App\Http\Controllers\SurpriseFileController::class, 'store']);
     Route::get('/surprises/{id}/files', [\App\Http\Controllers\SurpriseFileController::class, 'index']);
     Route::get('/files/{id}/download', [\App\Http\Controllers\SurpriseFileController::class, 'download']);
+
     Route::get('/users/{id}/dashboard', [\App\Http\Controllers\UserController::class, 'dashboard']);
-    Route::post('/surprises/{id}/start', [SurpriseController::class, 'start']);
-    Route::post('/surprises/{id}/deliver', [SurpriseController::class, 'deliver']);
-    Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete']);
-    Route::post('/surprises/{id}/cancel', [SurpriseController::class, 'cancel']);
 });

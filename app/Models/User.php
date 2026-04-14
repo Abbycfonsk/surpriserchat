@@ -114,6 +114,16 @@ class User extends Authenticatable
             default => 0,
         };
     }
+    public function proposedSkills()
+    {
+        return $this->belongsToMany(Skill::class, 'user_proposed_skills');
+    }
+
+    public function activeSkills()
+    {
+        return $this->belongsToMany(Skill::class, 'user_skills')
+            ->withPivot('level', 'xp');
+    }
 
     public function canAcceptUrgent(): bool
     {

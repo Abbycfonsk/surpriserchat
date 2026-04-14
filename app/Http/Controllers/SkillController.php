@@ -17,59 +17,67 @@ class SkillController extends Controller
         ]);
     }
 
-    // Asignar skill a usuario
-    public function assignSkill(Request $request, $userId)
+    // ============================
+    //  SKILLS PROPUESTAS (GENIO)
+    // ============================
+
+    // POST /users/{id}/proposed-skills
+    public function updateProposedSkills(Request $request, $userId)
     {
         $request->validate([
-            'skill_id' => 'required|exists:skills,id'
+            'skills' => 'required|array',
+            'skills.*' => 'exists:skills,id'
         ]);
 
         $user = User::findOrFail($userId);
 
-        // Evitar duplicados
-        if ($user->skills()->where('skill_id', $request->skill_id)->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Skill already assigned'
-            ], 400);
-        }
-
-        $user->skills()->attach($request->skill_id);
+        // Sincronizar skills propuestas
+        $user->proposedSkills()->sync($request->skills);
 
         return response()->json([
             'success' => true,
-            'message' => 'Skill assigned successfully'
+            'message' => 'Proposed skills updated'
         ]);
     }
 
-    // Quitar skill
-    public function removeSkill($userId, $skillId)
-    {
-        $user = User::findOrFail($userId);
+    // ============================
+    //  VER SKILLS DEL GENIO
+    // ============================
 
-        $user->skills()->detach($skillId);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Skill removed successfully'
-        ]);
-    }
-
-    // Ver skills del usuario con nivel automático
+    // GET /users/{id}/skills
     public function userSkills($userId)
     {
-        $user = User::findOrFail($userId);
+        $user = User::with(['proposedSkills', 'activeSkills'])->findOrFail($userId);
+
+        // Skills propuestas (nivel 0)
+        $proposed = $user->proposedSkills->map(function ($skill) {
+            return [
+                'id' => $skill->id,
+                'name' => $skill->name,
+                'category' => $skill->category,
+                'level' => 0,
+                'status' => 'proposed'
+            ];
+        });
+
+        // Skills activas (nivel real)
+        $active = $user->activeSkills->map(function ($skill) {
+            return [
+                'id' => $skill->id,
+                'name' => $skill->name,
+                'category' => $skill->category,
+                'level' => $skill->pivot->level,
+                'xp' => $skill->pivot->xp,
+                'status' => 'active'
+            ];
+        });
 
         return response()->json([
             'success' => true,
-            'data' => $user->skills->map(function ($skill) {
-                return [
-                    'id' => $skill->id,
-                    'name' => $skill->name,
-                    'category' => $skill->category,
-                    'level' => $skill->pivot->level, // ahora sí funciona
-                ];
-            })
+            'data' => [
+                'proposed' => $proposed,
+                'active' => $active
+            ]
         ]);
     }
 }

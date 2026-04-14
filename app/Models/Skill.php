@@ -14,6 +14,16 @@ class Skill extends Model
     {
         return $this->belongsToMany(User::class, 'user_skills');
     }
+    public function proposedByUsers()
+    {
+        return $this->belongsToMany(User::class, 'user_proposed_skills');
+    }
+
+    public function activeUsers()
+    {
+        return $this->belongsToMany(User::class, 'user_skills')
+            ->withPivot('level', 'xp');
+    }
 
     public function surprises()
     {
