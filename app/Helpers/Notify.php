@@ -6,44 +6,37 @@ use App\Models\Notification;
 
 class Notify
 {
-    // Método genérico interno
-    private static function sendNotification($userId, $title, $message, $type)
+    public static function send($userId, $title, $message, $type = 'info', array $metadata = null)
     {
         return Notification::create([
-            'user_id' => $userId,
-            'title' => $title,
-            'message' => $message,
-            'type' => $type,
+            'user_id'    => $userId,
+            'title'      => $title,
+            'message'    => $message,
+            'type'       => $type,
+            'metadata'   => $metadata,
+            'read_flag'  => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
-    // 🔥 MÉTODO QUE TE FALTABA
-    public static function send($userId, $title, $message, $type = 'info')
+    public static function info($userId, $title, $message, array $metadata = null)
     {
-        return self::sendNotification($userId, $title, $message, $type);
+        return self::send($userId, $title, $message, 'info', $metadata);
     }
 
-    // Notificación de éxito
-    public static function success($userId, $title, $message)
+    public static function success($userId, $title, $message, array $metadata = null)
     {
-        return self::sendNotification($userId, $title, $message, 'success');
+        return self::send($userId, $title, $message, 'success', $metadata);
     }
 
-    // Notificación informativa
-    public static function info($userId, $title, $message)
+    public static function warning($userId, $title, $message, array $metadata = null)
     {
-        return self::sendNotification($userId, $title, $message, 'info');
+        return self::send($userId, $title, $message, 'warning', $metadata);
     }
 
-    // Notificación de advertencia
-    public static function warning($userId, $title, $message)
+    public static function error($userId, $title, $message, array $metadata = null)
     {
-        return self::sendNotification($userId, $title, $message, 'warning');
-    }
-
-    // Notificación de error
-    public static function error($userId, $title, $message)
-    {
-        return self::sendNotification($userId, $title, $message, 'error');
+        return self::send($userId, $title, $message, 'error', $metadata);
     }
 }

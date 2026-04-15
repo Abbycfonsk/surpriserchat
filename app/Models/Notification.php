@@ -8,14 +8,21 @@ class Notification extends Model
 {
     protected $table = 'notifications';
 
-    public $timestamps = false; // porque solo tienes created_at
+    public $timestamps = true; // ahora usamos created_at y updated_at
 
     protected $fillable = [
         'user_id',
         'title',
         'message',
         'type',
+        'metadata',
         'read_flag',
         'created_at',
+        'updated_at',
+    ];
+
+    protected $casts = [
+        'metadata' => 'array',
+        'read_flag' => 'boolean',
     ];
 }

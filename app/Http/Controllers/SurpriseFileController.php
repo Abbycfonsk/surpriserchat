@@ -49,9 +49,9 @@ class SurpriseFileController extends Controller
         // Crear URL pública
         $url = asset("storage/" . $path);
 
-        // Detectar tipo de archivo (simple)
+        // Detectar tipo de archivo
         $mime = $request->file('file')->getMimeType();
-        $type = explode('/', $mime)[0]; // image, video, audio, application...
+        $type = explode('/', $mime)[0];
 
         $file = SurpriseFile::create([
             'surprise_id' => $id,
@@ -62,16 +62,19 @@ class SurpriseFileController extends Controller
             'file_url' => $url,
             'file_type' => $type,
         ]);
-        Notify::info(
-            $surprise->creator_id,
-            'Nuevo archivo disponible',
-            'El genius ha subido un archivo a tu sorpresa.'
-        );
-        Notify::info(
-            $surprise->genius_id,
-            'Nuevo archivo del creador',
-            'El creador ha subido un archivo a la sorpresa.'
-        );
+
+        // ⭐ NUEVA LÓGICA DE NOTIFICACIONES
+        $user = $request->user();
+
+        // Si el usuario es el GENIUS → notificar al CREADOR
+        if ($user->id === $surprise->genius_id) {
+            \App\Services\NotificationEvents::fileUploadedByGenius($surprise);
+        }
+
+        // Si el usuario es el CREADOR → notificar al GENIUS
+        if ($user->id === $surprise->creator_id) {
+            \App\Services\NotificationEvents::fileUploadedByCreator($surprise);
+        }
 
         return response()->json([
             'success' => true,

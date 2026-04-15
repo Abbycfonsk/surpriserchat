@@ -6,6 +6,7 @@ use App\Models\Offer;
 use App\Models\Surprise;
 use Illuminate\Http\Request;
 use App\Helpers\Notify;
+use App\Services\NotificationEvents;
 
 class OfferController extends Controller
 {
@@ -31,12 +32,7 @@ class OfferController extends Controller
         ]);
 
         // Notificación al creador
-        Notify::send(
-            $surprise->creator_id,
-            'Nueva oferta recibida',
-            'Un genius ha enviado una oferta para tu sorpresa.',
-            'info'
-        );
+        NotificationEvents::offerReceived($offer);
 
         return response()->json([
             'success' => true,
@@ -79,12 +75,7 @@ class OfferController extends Controller
             ->update(['status' => 'rejected']);
 
         // Notificación al genius ganador
-        Notify::send(
-            $offer->genius_id,
-            'Oferta aceptada',
-            'Tu oferta ha sido aceptada. ¡Empieza la sorpresa!',
-            'success'
-        );
+        NotificationEvents::offerAccepted($offer);
 
         // Notificación a los demás genius
         $otherOffers = Offer::where('surprise_id', $surprise->id)
@@ -92,12 +83,7 @@ class OfferController extends Controller
             ->get();
 
         foreach ($otherOffers as $o) {
-            Notify::send(
-                $o->genius_id,
-                'Oferta rechazada',
-                'La sorpresa ha sido asignada a otro genius.',
-                'info'
-            );
+            NotificationEvents::offerRejected($o);
         }
 
         return response()->json([

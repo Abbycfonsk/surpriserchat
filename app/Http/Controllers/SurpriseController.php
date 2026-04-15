@@ -7,6 +7,7 @@ use App\Models\SurpriseFile;
 use Illuminate\Http\Request;
 use App\Helpers\Notify;
 use App\Services\GeniusLevelService;
+use App\Services\NotificationEvents;
 
 class SurpriseController extends Controller
 {
@@ -68,12 +69,9 @@ class SurpriseController extends Controller
         $surprise = Surprise::create($validated);
 
         // 🔔 Notificación: sorpresa creada
-        Notify::send(
-            $surprise->creator_id,
-            'Sorpresa creada',
-            'Tu sorpresa ha sido creada correctamente.',
-            'success'
-        );
+
+
+        NotificationEvents::surpriseCreated($surprise);
 
         return response()->json([
             'success' => true,
@@ -160,12 +158,7 @@ class SurpriseController extends Controller
 
         // Notificación opcional si cambia el deadline
         if (isset($validated['deadline']) && $surprise->genius_id) {
-            Notify::send(
-                $surprise->genius_id,
-                'Deadline actualizado',
-                'El creador ha actualizado la fecha límite de la sorpresa.',
-                'info'
-            );
+            NotificationEvents::deadlineUpdated($surprise);
         }
 
         return response()->json([
@@ -217,12 +210,7 @@ class SurpriseController extends Controller
         $surprise->save();
 
         // 🔔 Notificación: sorpresa entregada
-        Notify::send(
-            $surprise->creator_id,
-            'Sorpresa entregada',
-            'El genius ha entregado tu sorpresa.',
-            'success'
-        );
+        NotificationEvents::surpriseDelivered($surprise);
 
         return response()->json([
             'success' => true,
@@ -246,6 +234,7 @@ class SurpriseController extends Controller
 
         // 2) Sumar XP y subir nivel si corresponde
         $this->addExperience($surprise);
+        NotificationEvents::surpriseCompleted($surprise);
 
         return response()->json([
             'success' => true,
@@ -302,7 +291,19 @@ class SurpriseController extends Controller
             'file_url' => $validated['file_url'],
             'file_type' => $validated['file_type'],
         ]);
+        $user = $request->user();
 
+        // Caso 1: el que sube es el GENIUS de esta sorpresa
+        if ($user->id === $surprise->genius_id) {
+            // Notificamos al CREADOR
+            \App\Services\NotificationEvents::fileUploadedByGenius($surprise);
+        }
+
+        // Caso 2: el que sube es el CREADOR de esta sorpresa
+        if ($user->id === $surprise->creator_id) {
+            // Notificamos al GENIUS (si existe)
+            \App\Services\NotificationEvents::fileUploadedByCreator($surprise);
+        }
         return response()->json([
             'success' => true,
             'message' => 'File added successfully',
@@ -373,6 +374,9 @@ class SurpriseController extends Controller
 
         $pivot = $skill->pivot;
 
+        // ⭐ Guarda el nivel ANTES de sumar XP
+        $oldLevel = $pivot->level;
+
         $xp = 10; // base
 
         // Tamaño
@@ -396,6 +400,15 @@ class SurpriseController extends Controller
         while ($pivot->xp >= 100) {
             $pivot->level++;
             $pivot->xp -= 100;
+        }
+
+        // ⭐ Notificación SOLO si subió de nivel
+        if ($pivot->level > $oldLevel) {
+            NotificationEvents::skillLevelUp(
+                $genius,
+                \App\Models\Skill::find($skillId),
+                $pivot->level
+            );
         }
 
         $pivot->save();

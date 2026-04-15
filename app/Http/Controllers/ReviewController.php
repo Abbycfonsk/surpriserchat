@@ -6,6 +6,7 @@ use App\Models\Review;
 use App\Models\Surprise;
 use App\Models\User;
 use Illuminate\Http\Request;
+use App\Services\NotificationEvents;
 
 class ReviewController extends Controller
 {
@@ -45,6 +46,9 @@ class ReviewController extends Controller
             'rating_genius' => $validated['rating_genius'],
             'comment' => $validated['comment'] ?? null
         ]);
+
+
+        NotificationEvents::reviewCreated($review);
 
         // Recalcular rating del genio
         $genius = User::find($surprise->genius_id);
