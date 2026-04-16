@@ -7,6 +7,7 @@ use App\Models\Surprise;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Services\NotificationEvents;
+use App\Services\SanitizerService;
 
 class ReviewController extends Controller
 {
@@ -30,23 +31,27 @@ class ReviewController extends Controller
             return response()->json(['error' => 'This surprise already has a review'], 400);
         }
 
-        // Validación de datos (sin reviewer_id)
+        // Validación de datos
         $validated = $request->validate([
             'rating_surprise' => 'required|integer|min:1|max:5',
             'rating_genius' => 'required|integer|min:1|max:5',
             'comment' => 'nullable|string'
         ]);
 
+        // ⭐ SANITIZAR SOLO TEXTO LIBRE
+        if (isset($validated['comment'])) {
+            $validated['comment'] = SanitizerService::clean($validated['comment']);
+        }
+
         // Crear review
         $review = Review::create([
             'surprise_id' => $surpriseId,
-            'reviewer_id' => $request->user()->id, // usuario autenticado
+            'reviewer_id' => $request->user()->id,
             'reviewed_user_id' => $surprise->genius_id,
             'rating_surprise' => $validated['rating_surprise'],
             'rating_genius' => $validated['rating_genius'],
             'comment' => $validated['comment'] ?? null
         ]);
-
 
         NotificationEvents::reviewCreated($review);
 
@@ -57,7 +62,6 @@ class ReviewController extends Controller
         // Recalcular nivel del genio
         $genius->genius_level = $this->calculateGeniusLevel($genius);
 
-        // Guardar cambios
         $genius->save();
 
         return response()->json([

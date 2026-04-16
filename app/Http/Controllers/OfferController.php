@@ -7,6 +7,7 @@ use App\Models\Surprise;
 use Illuminate\Http\Request;
 use App\Helpers\Notify;
 use App\Services\NotificationEvents;
+use App\Services\SanitizerService;
 
 class OfferController extends Controller
 {
@@ -21,6 +22,11 @@ class OfferController extends Controller
             'message' => 'nullable|string',
             'eta_hours' => 'nullable|integer|min:1'
         ]);
+
+        // ⭐ Sanitizar SOLO texto libre
+        if (isset($validated['message'])) {
+            $validated['message'] = SanitizerService::clean($validated['message']);
+        }
 
         // Crear oferta
         $offer = Offer::create([
@@ -40,7 +46,6 @@ class OfferController extends Controller
             'data' => $offer
         ]);
     }
-
     // Listar ofertas de una sorpresa
     public function listBySurprise($surpriseId)
     {

@@ -8,11 +8,13 @@ use App\Models\Review;
 use App\Models\Surprise;
 use App\Models\User;
 use App\Models\Skill;
-use App\Models\SurpriseFile;
-use Illuminate\Http\Request;
 
 class NotificationEvents
 {
+    /* ---------------------------------------------------------
+     *  SURPRISE EVENTS
+     * --------------------------------------------------------- */
+
     public static function surpriseCreated(Surprise $surprise)
     {
         Notify::success(
@@ -23,16 +25,16 @@ class NotificationEvents
         );
     }
 
-    public static function deadlineUpdated(Surprise $surprise)
+    public static function surpriseStarted(Surprise $surprise)
     {
-        if (!$surprise->genius_id) return;
-
-        Notify::info(
-            $surprise->genius_id,
-            'Deadline actualizado',
-            'El creador ha actualizado la fecha límite de la sorpresa.',
-            ['surprise_id' => $surprise->id]
-        );
+        if ($surprise->creator_id) {
+            Notify::info(
+                $surprise->creator_id,
+                'Sorpresa iniciada',
+                'El genius ha comenzado a trabajar en tu sorpresa.',
+                ['surprise_id' => $surprise->id]
+            );
+        }
     }
 
     public static function surpriseDelivered(Surprise $surprise)
@@ -47,6 +49,7 @@ class NotificationEvents
 
     public static function surpriseCompleted(Surprise $surprise)
     {
+        // Notificar al creador
         Notify::success(
             $surprise->creator_id,
             'Sorpresa completada',
@@ -54,6 +57,7 @@ class NotificationEvents
             ['surprise_id' => $surprise->id]
         );
 
+        // Notificar al genius
         if ($surprise->genius_id) {
             Notify::success(
                 $surprise->genius_id,
@@ -63,6 +67,34 @@ class NotificationEvents
             );
         }
     }
+
+    public static function surpriseCancelled(Surprise $surprise)
+    {
+        if ($surprise->genius_id) {
+            Notify::info(
+                $surprise->genius_id,
+                'Sorpresa cancelada',
+                'El creador ha cancelado la sorpresa.',
+                ['surprise_id' => $surprise->id]
+            );
+        }
+    }
+
+    public static function deadlineUpdated(Surprise $surprise)
+    {
+        if (!$surprise->genius_id) return;
+
+        Notify::info(
+            $surprise->genius_id,
+            'Deadline actualizado',
+            'El creador ha actualizado la fecha límite de la sorpresa.',
+            ['surprise_id' => $surprise->id]
+        );
+    }
+
+    /* ---------------------------------------------------------
+     *  OFFER EVENTS
+     * --------------------------------------------------------- */
 
     public static function offerReceived(Offer $offer)
     {
@@ -109,6 +141,10 @@ class NotificationEvents
         );
     }
 
+    /* ---------------------------------------------------------
+     *  FILE EVENTS
+     * --------------------------------------------------------- */
+
     public static function fileUploadedByCreator(Surprise $surprise)
     {
         if (!$surprise->genius_id) return;
@@ -130,41 +166,10 @@ class NotificationEvents
             ['surprise_id' => $surprise->id]
         );
     }
-    public function addFile(Request $request, $id)
-    {
-        $surprise = Surprise::findOrFail($id);
 
-        $validated = $request->validate([
-            'file_url' => 'required|string',
-            'file_type' => 'required|string',
-        ]);
-
-        $file = SurpriseFile::create([
-            'surprise_id' => $surprise->id,
-            'file_url' => $validated['file_url'],
-            'file_type' => $validated['file_type'],
-        ]);
-
-        $user = $request->user();
-
-        // ⭐ LIMPIEZA TOTAL: solo una notificación según el rol en ESTA sorpresa
-
-        // Si el usuario es el GENIUS de esta sorpresa → notificar al CREADOR
-        if ($user->id === $surprise->genius_id) {
-            \App\Services\NotificationEvents::fileUploadedByGenius($surprise);
-        }
-
-        // Si el usuario es el CREADOR de esta sorpresa → notificar al GENIUS
-        if ($user->id === $surprise->creator_id) {
-            \App\Services\NotificationEvents::fileUploadedByCreator($surprise);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'File added successfully',
-            'data' => $file
-        ]);
-    }
+    /* ---------------------------------------------------------
+     *  REVIEW EVENTS
+     * --------------------------------------------------------- */
 
     public static function reviewCreated(Review $review)
     {
@@ -180,6 +185,10 @@ class NotificationEvents
             ]
         );
     }
+
+    /* ---------------------------------------------------------
+     *  SKILL EVENTS
+     * --------------------------------------------------------- */
 
     public static function skillLevelUp(User $user, Skill $skill, int $newLevel)
     {

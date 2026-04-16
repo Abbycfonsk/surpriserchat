@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use App\Helpers\Notify;
 use App\Services\GeniusLevelService;
 use App\Services\NotificationEvents;
+use App\Services\AuditService;
+use App\Services\SanitizerService;
 
 class SurpriseController extends Controller
 {
@@ -57,17 +59,30 @@ class SurpriseController extends Controller
             'is_urgent' => 'nullable|boolean'
         ]);
 
+        $validated['title'] = SanitizerService::clean($validated['title']);
+        $validated['description'] = SanitizerService::clean($validated['description']);
+
+
+
+
+        // Siempre empieza en open
+        $validated['status'] = 'open';
+
         if (!empty($validated['genius_id']) && $validated['creator_id'] == $validated['genius_id']) {
             return response()->json([
                 'error' => 'Creator and genius cannot be the same user'
             ], 400);
         }
 
-        // Siempre empieza en open
-        $validated['status'] = 'open';
-
         $surprise = Surprise::create($validated);
 
+        AuditService::log(
+            'surprise_created',
+            'Surprise',
+            $surprise->id,
+            null,
+            $surprise->toArray()
+        );
         // 🔔 Notificación: sorpresa creada
 
 
@@ -121,7 +136,6 @@ class SurpriseController extends Controller
         $rules = [];
 
         if ($surprise->status === 'open') {
-            // El creador puede modificar casi todo
             $rules = [
                 'title' => 'nullable|string|max:200',
                 'description' => 'nullable|string',
@@ -138,7 +152,6 @@ class SurpriseController extends Controller
         }
 
         if ($surprise->status === 'in_progress') {
-            // El creador solo puede aclarar cosas o extender deadline
             $rules = [
                 'description' => 'nullable|string',
                 'deadline' => 'nullable|date|after_or_equal:today'
@@ -153,8 +166,41 @@ class SurpriseController extends Controller
         // ❌ Nunca permitir asignar genio manualmente
         unset($validated['genius_id']);
 
+        // ⭐ SANITIZACIÓN SOLO DE TEXTO LIBRE
+        if (isset($validated['title'])) {
+            $validated['title'] = SanitizerService::clean($validated['title']);
+        }
+
+        if (isset($validated['description'])) {
+            $validated['description'] = SanitizerService::clean($validated['description']);
+        }
+
+        if (isset($validated['target_name'])) {
+            $validated['target_name'] = SanitizerService::clean($validated['target_name']);
+        }
+
+        if (isset($validated['target_city'])) {
+            $validated['target_city'] = SanitizerService::clean($validated['target_city']);
+        }
+
+        if (isset($validated['target_country'])) {
+            $validated['target_country'] = SanitizerService::clean($validated['target_country']);
+        }
+
+        // Guardamos valores previos para auditoría
+        $old = $surprise->getOriginal();
+
         // Actualizar sorpresa
         $surprise->update($validated);
+
+        // Auditoría
+        AuditService::log(
+            'surprise_updated',
+            'Surprise',
+            $surprise->id,
+            $old,
+            $surprise->getChanges()
+        );
 
         // Notificación opcional si cambia el deadline
         if (isset($validated['deadline']) && $surprise->genius_id) {
@@ -168,48 +214,64 @@ class SurpriseController extends Controller
         ]);
     }
 
-    public function start($id)
+    public function start(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
+        $user = $request->user();
 
-        if ($surprise->status !== 'in_progress') {
-            return response()->json(['error' => 'Surprise is not in progress'], 400);
+        // Solo el GENIUS puede iniciar
+        if ($user->id !== $surprise->genius_id) {
+            return response()->json(['error' => 'Only the assigned genius can start the surprise'], 403);
         }
 
-        $genius = $surprise->genius;
-
-        // Revalidar límites por seguridad
-        if (!in_array($surprise->size, $genius->allowedSurpriseSizes())) {
-            return response()->json(['error' => 'You cannot work on this type of surprise'], 403);
+        // Validación de estado
+        if ($surprise->status !== 'open') {
+            return response()->json(['error' => 'Only open surprises can be started'], 400);
         }
+
+        // Cambiar estado
+        $surprise->status = 'in_progress';
+        $surprise->save();
+        AuditService::log(
+            'surprise_started',
+            'Surprise',
+            $surprise->id,
+            ['status' => 'open'],
+            ['status' => 'in_progress']
+        );
+        NotificationEvents::surpriseStarted($surprise);
 
         return response()->json([
             'success' => true,
-            'message' => 'Work started',
+            'message' => 'Surprise started',
             'data' => $surprise
         ]);
     }
-
     // Genius entrega la sorpresa
     public function deliver(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
+        $user = $request->user();
 
-        if ($surprise->status !== 'in_progress') {
-            return response()->json(['error' => 'Surprise is not in progress'], 400);
+        // Solo el GENIUS puede entregar
+        if ($user->id !== $surprise->genius_id) {
+            return response()->json(['error' => 'Only the assigned genius can deliver the surprise'], 403);
         }
 
-        $genius = $surprise->genius;
-
-        // Revalidar límites por seguridad
-        if (!in_array($surprise->size, $genius->allowedSurpriseSizes())) {
-            return response()->json(['error' => 'You cannot deliver this type of surprise'], 403);
+        // Validación de estado
+        if ($surprise->status !== 'in_progress') {
+            return response()->json(['error' => 'Only surprises in progress can be delivered'], 400);
         }
 
         $surprise->status = 'delivered';
         $surprise->save();
-
-        // 🔔 Notificación: sorpresa entregada
+        AuditService::log(
+            'surprise_delivered',
+            'Surprise',
+            $surprise->id,
+            ['status' => 'in_progress'],
+            ['status' => 'delivered']
+        );
         NotificationEvents::surpriseDelivered($surprise);
 
         return response()->json([
@@ -220,20 +282,36 @@ class SurpriseController extends Controller
     }
 
     // Creador completa la sorpresa
-    public function complete($id)
+    public function complete(Request $request, $id)
     {
         $surprise = Surprise::with('genius')->findOrFail($id);
+        $user = $request->user();
+
+        // Solo el creador puede completar
+        if ($user->id !== $surprise->creator_id) {
+            return response()->json(['error' => 'Only the creator can complete the surprise'], 403);
+        }
+
+        // Validación de estado
+        if ($surprise->status !== 'delivered') {
+            return response()->json(['error' => 'Only delivered surprises can be completed'], 400);
+        }
 
         $surprise->update([
             'status' => 'completed',
             'completed_at' => now(),
         ]);
-
-        // 1) Activar skill si no estaba activa
+        AuditService::log(
+            'surprise_completed',
+            'Surprise',
+            $surprise->id,
+            ['status' => 'delivered'],
+            ['status' => 'completed']
+        );
+        // Activar skill + XP
         $this->activateSkill($surprise);
-
-        // 2) Sumar XP y subir nivel si corresponde
         $this->addExperience($surprise);
+
         NotificationEvents::surpriseCompleted($surprise);
 
         return response()->json([
@@ -241,21 +319,31 @@ class SurpriseController extends Controller
             'message' => 'Surprise completed and skills updated'
         ]);
     }
-
-    public function cancel($id)
+    public function cancel(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
+        $user = $request->user();
 
-        if ($surprise->status === 'completed') {
-            return response()->json(['error' => 'Cannot cancel a completed surprise'], 400);
+        // Solo el creador puede cancelar
+        if ($user->id !== $surprise->creator_id) {
+            return response()->json(['error' => 'Only the creator can cancel the surprise'], 403);
         }
 
-        if ($surprise->status === 'delivered') {
-            return response()->json(['error' => 'Cannot cancel a delivered surprise'], 400);
+        // Validación de estado
+        if (!in_array($surprise->status, ['open', 'in_progress'])) {
+            return response()->json(['error' => 'This surprise cannot be cancelled'], 400);
         }
 
         $surprise->status = 'cancelled';
         $surprise->save();
+        AuditService::log(
+            'surprise_cancelled',
+            'Surprise',
+            $surprise->id,
+            ['status' => $surprise->status],
+            ['status' => 'cancelled']
+        );
+        NotificationEvents::surpriseCancelled($surprise);
 
         return response()->json([
             'success' => true,
@@ -263,7 +351,6 @@ class SurpriseController extends Controller
             'data' => $surprise
         ]);
     }
-
     // Eliminar una sorpresa
     public function destroy($id)
     {
@@ -277,39 +364,72 @@ class SurpriseController extends Controller
     }
 
     // Añadir archivos a una sorpresa
-    public function addFile(Request $request, $id)
-    {
-        $surprise = Surprise::findOrFail($id);
+    /*public function addFile(Request $request, $id)
+{
+    $surprise = Surprise::findOrFail($id);
+    $user = $request->user();
 
-        $validated = $request->validate([
-            'file_url' => 'required|string',
-            'file_type' => 'required|string',
-        ]);
-
-        $file = SurpriseFile::create([
-            'surprise_id' => $surprise->id,
-            'file_url' => $validated['file_url'],
-            'file_type' => $validated['file_type'],
-        ]);
-        $user = $request->user();
-
-        // Caso 1: el que sube es el GENIUS de esta sorpresa
-        if ($user->id === $surprise->genius_id) {
-            // Notificamos al CREADOR
-            \App\Services\NotificationEvents::fileUploadedByGenius($surprise);
-        }
-
-        // Caso 2: el que sube es el CREADOR de esta sorpresa
-        if ($user->id === $surprise->creator_id) {
-            // Notificamos al GENIUS (si existe)
-            \App\Services\NotificationEvents::fileUploadedByCreator($surprise);
-        }
-        return response()->json([
-            'success' => true,
-            'message' => 'File added successfully',
-            'data' => $file
-        ]);
+    // 1. Validación de permisos
+    if ($user->id !== $surprise->creator_id && $user->id !== $surprise->genius_id) {
+        return response()->json(['error' => 'No autorizado'], 403);
     }
+
+    // 2. Validación de estado
+    if (!in_array($surprise->status, ['in_progress', 'delivered'])) {
+        return response()->json(['error' => 'No se pueden subir archivos en este estado'], 400);
+    }
+
+    // 3. Validación básica
+    $request->validate([
+        'file' => 'required|file|max:10240|mimes:jpg,jpeg,png,webp,pdf,mp4,mp3'
+    ]);
+
+    // 4. Validación MIME real
+    $allowedMime = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/pdf',
+        'video/mp4',
+        'audio/mpeg'
+    ];
+
+    if (!in_array($request->file('file')->getMimeType(), $allowedMime)) {
+        return response()->json(['error' => 'Tipo de archivo no permitido'], 400);
+    }
+
+    // 5. Guardar archivo
+    $path = $request->file('file')->store("surprises/$id", 'public');
+    $url = asset("storage/" . $path);
+
+    $mime = $request->file('file')->getMimeType();
+    $type = explode('/', $mime)[0];
+
+    $file = SurpriseFile::create([
+        'surprise_id' => $id,
+        'filename' => $request->file('file')->getClientOriginalName(),
+        'path' => $path,
+        'mime' => $mime,
+        'size' => $request->file('file')->getSize(),
+        'file_url' => $url,
+        'file_type' => $type,
+    ]);
+
+    // 6. Notificaciones
+    if ($user->id === $surprise->genius_id) {
+        \App\Services\NotificationEvents::fileUploadedByGenius($surprise);
+    }
+
+    if ($user->id === $surprise->creator_id) {
+        \App\Services\NotificationEvents::fileUploadedByCreator($surprise);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'File added successfully',
+        'data' => $file
+    ]);
+}*/
 
     // Listar sorpresas creadas por un usuario
     public function byCreator($userId)

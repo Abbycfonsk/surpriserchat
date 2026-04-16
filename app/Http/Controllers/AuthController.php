@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
+use App\Services\SanitizerService;
 
 class AuthController extends Controller
 {
@@ -17,6 +18,12 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
         ]);
 
+        // ⭐ Sanitizar SOLO texto libre
+        $validated['name'] = SanitizerService::clean($validated['name']);
+        $validated['email'] = SanitizerService::clean($validated['email']);
+
+        // ❌ NUNCA sanitizar password
+
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
@@ -25,13 +32,17 @@ class AuthController extends Controller
 
         return response()->json($user);
     }
-
     public function login(Request $request)
     {
         $validated = $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
+
+        // ⭐ Sanitizar email
+        $validated['email'] = SanitizerService::clean($validated['email']);
+
+        // ❌ NUNCA sanitizar password
 
         $user = User::where('email', $validated['email'])->first();
 

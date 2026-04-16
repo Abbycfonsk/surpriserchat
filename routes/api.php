@@ -23,8 +23,10 @@ use App\Http\Controllers\TopSkillController;
 
 
 
-Route::post('/register', [AuthController::class, 'register']); //PARA REGISTRARTE
-Route::post('/login', [AuthController::class, 'login']); //PARA LOGUEARTE
+Route::post('/register', [AuthController::class, 'register'])
+    ->middleware('throttle:3,1'); // Registro Máx 3 registros por minuto
+Route::post('/login', [AuthController::class, 'login'])
+    ->middleware('throttle:5,1'); // Login Máx 5 intentos por minuto
 
 
 
@@ -103,7 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
     Route::delete('/surprises/{id}', [SurpriseController::class, 'destroy']);
-    Route::post('/surprises/{id}/files', [SurpriseController::class, 'addFile']);
+    /*Route::post('/surprises/{id}/files', [SurpriseController::class, 'addFile']);*/
     Route::post('/surprises/{id}/start', [SurpriseController::class, 'start']);
     Route::post('/surprises/{id}/deliver', [SurpriseController::class, 'deliver']);
     Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete']);

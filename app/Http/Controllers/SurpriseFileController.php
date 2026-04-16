@@ -6,7 +6,8 @@ use App\Models\Surprise;
 use App\Models\SurpriseFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use App\Helpers\Notify;
+use App\Services\NotificationEvents;
+use App\Services\AuditService;
 
 class SurpriseFileController extends Controller
 {
@@ -19,6 +20,7 @@ class SurpriseFileController extends Controller
             'data' => $files
         ]);
     }
+
     public function download($id)
     {
         $file = SurpriseFile::findOrFail($id);
@@ -37,19 +39,42 @@ class SurpriseFileController extends Controller
 
     public function store(Request $request, $id)
     {
+        $surprise = Surprise::findOrFail($id);
+        $user = $request->user();
+
+        // 1. Validación de permisos
+        if ($user->id !== $surprise->creator_id && $user->id !== $surprise->genius_id) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // 2. Validación de estado
+        if (!in_array($surprise->status, ['in_progress', 'delivered'])) {
+            return response()->json(['error' => 'No se pueden subir archivos en este estado'], 400);
+        }
+
+        // 3. Validación básica
         $request->validate([
-            'file' => 'required|file|max:10240' // 10MB
+            'file' => 'required|file|max:10240|mimes:jpg,jpeg,png,webp,pdf,mp4,mp3'
         ]);
 
-        $surprise = Surprise::findOrFail($id);
+        // 4. Validación MIME real
+        $allowedMime = [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'application/pdf',
+            'video/mp4',
+            'audio/mpeg'
+        ];
 
-        // Guardar archivo en storage/app/public/surprises/{id}/
+        if (!in_array($request->file('file')->getMimeType(), $allowedMime)) {
+            return response()->json(['error' => 'Tipo de archivo no permitido'], 400);
+        }
+
+        // 5. Guardar archivo
         $path = $request->file('file')->store("surprises/$id", 'public');
-
-        // Crear URL pública
         $url = asset("storage/" . $path);
 
-        // Detectar tipo de archivo
         $mime = $request->file('file')->getMimeType();
         $type = explode('/', $mime)[0];
 
@@ -62,18 +87,20 @@ class SurpriseFileController extends Controller
             'file_url' => $url,
             'file_type' => $type,
         ]);
-
-        // ⭐ NUEVA LÓGICA DE NOTIFICACIONES
-        $user = $request->user();
-
-        // Si el usuario es el GENIUS → notificar al CREADOR
+        AuditService::log(
+            'file_uploaded',
+            'SurpriseFile',
+            $file->id,
+            null,
+            $file->toArray()
+        );
+        // 6. Notificaciones
         if ($user->id === $surprise->genius_id) {
-            \App\Services\NotificationEvents::fileUploadedByGenius($surprise);
+            NotificationEvents::fileUploadedByGenius($surprise);
         }
 
-        // Si el usuario es el CREADOR → notificar al GENIUS
         if ($user->id === $surprise->creator_id) {
-            \App\Services\NotificationEvents::fileUploadedByCreator($surprise);
+            NotificationEvents::fileUploadedByCreator($surprise);
         }
 
         return response()->json([
