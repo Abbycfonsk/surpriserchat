@@ -11,6 +11,7 @@ use App\Http\Controllers\NotificationController;
 use App\Models\Surprise;
 use App\Models\User;
 use App\Http\Controllers\TopSkillController;
+use App\Http\Controllers\UserController;
 
 // Ruta de prueba
 /*Route::get('/ping', function () {
@@ -81,7 +82,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-
+    Route::put('/user/profile', [UserController::class, 'updateProfile']);
 
 
     Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete'])

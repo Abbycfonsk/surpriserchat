@@ -6,6 +6,8 @@ use App\Models\User;
 use App\Models\Surprise;
 use App\Models\Review;
 use App\Models\UserSkill;
+use App\Services\AuditService;
+use App\Services\SanitizerService;
 use Illuminate\Http\Request;
 
 class UserController extends Controller
@@ -91,6 +93,49 @@ class UserController extends Controller
                     'total_surprises' => $createdStats['total'] + $doneStats['total']
                 ]
             ]
+        ]);
+    }
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        // Validación
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'username' => 'nullable|string|max:100|unique:users,username,' . $user->id,
+            'bio' => 'nullable|string|max:500',
+            'phone' => 'nullable|string|max:50',
+            'location_city' => 'nullable|string|max:100',
+            'location_country' => 'nullable|string|max:100',
+            'avatar' => 'nullable|url|max:255'
+        ]);
+
+        // ⭐ Sanitizar SOLO texto libre
+        foreach (['name', 'username', 'bio', 'phone', 'location_city', 'location_country', 'avatar'] as $field) {
+            if (isset($validated[$field])) {
+                $validated[$field] = SanitizerService::clean($validated[$field]);
+            }
+        }
+
+        // Guardar valores antiguos para auditoría
+        $old = $user->getOriginal();
+
+        // Actualizar usuario
+        $user->update($validated);
+
+        // Auditoría
+        AuditService::log(
+            'user_profile_updated',
+            'User',
+            $user->id,
+            $old,
+            $user->getChanges()
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully',
+            'data' => $user
         ]);
     }
 }
