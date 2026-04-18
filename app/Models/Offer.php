@@ -12,7 +12,9 @@ class Offer extends Model
         'price',
         'message',
         'eta_hours',
-        'status'
+        'status',
+        'creator_bid_count',
+        'genius_bid_count',
     ];
 
     public function surprise()
@@ -23,5 +25,10 @@ class Offer extends Model
     public function genius()
     {
         return $this->belongsTo(User::class, 'genius_id');
+    }
+
+    public function bids()
+    {
+        return $this->hasMany(OfferBid::class);
     }
 }

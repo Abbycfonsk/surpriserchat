@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
 use App\Services\SanitizerService;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -30,10 +32,31 @@ class AuthController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
-        return response()->json($user);
+        $user->sendEmailVerificationNotification();
+
+        return response()->json([
+            'message' => 'Usuario registrado. Revisa tu email para verificar la cuenta.'
+        ]);
     }
     public function login(Request $request)
     {
+
+
+
+
+        $email = (string) $request->email;
+        $key = Str::lower($email) . '|' . $request->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            return response()->json([
+                'error' => 'Demasiados intentos. Intenta más tarde.'
+            ], 429);
+        }
+
+        RateLimiter::hit($key, 60); // 60 segundos
+
+
+
         $validated = $request->validate([
             'email' => 'required|email',
             'password' => 'required',
@@ -45,7 +68,9 @@ class AuthController extends Controller
         // ❌ NUNCA sanitizar password
 
         $user = User::where('email', $validated['email'])->first();
-
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json(['error' => 'Debes verificar tu email antes de iniciar sesión'], 403);
+        }
         if (!$user || !Hash::check($validated['password'], $user->password)) {
             return response()->json(['error' => 'Credenciales inválidas'], 401);
         }

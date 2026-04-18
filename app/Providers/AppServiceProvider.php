@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Auth\Notifications\ResetPassword;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+
+        ResetPassword::createUrlUsing(function ($notifiable, string $token) {
+            return url('/api/reset-password?token=' . $token . '&email=' . $notifiable->email);
+        });
+
         Route::middleware('api')
             ->prefix('api')
             ->group(base_path('routes/api.php'));

@@ -12,6 +12,14 @@ use App\Models\Surprise;
 use App\Models\User;
 use App\Http\Controllers\TopSkillController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\OfferController;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+
 
 // Ruta de prueba
 /*Route::get('/ping', function () {
@@ -19,6 +27,62 @@ use App\Http\Controllers\UserController;
 });*/
 
 
+//-------------------------------------------------
+// SOLO PARA VERIFICAR EMAIL SOLO EN DESARROLLO
+//-------------------------------------------------
+
+
+Route::post('/dev/verify-email', function (Request $request) {
+    $request->validate([
+        'email' => 'required|email',
+    ]);
+
+    $user = User::where('email', $request->email)->firstOrFail();
+
+    if ($user->hasVerifiedEmail()) {
+        return response()->json(['message' => 'El email ya estaba verificado']);
+    }
+
+    $user->markEmailAsVerified();
+
+    return response()->json(['message' => 'Email verificado correctamente']);
+});
+
+
+
+Route::post('/dev/get-reset-token', function (Request $request) {
+    $request->validate(['email' => 'required|email']);
+
+    $record = DB::table('password_reset_tokens')
+        ->where('email', $request->email)
+        ->first();
+
+    if (!$record) {
+        return response()->json(['error' => 'No existe token para este email'], 404);
+    }
+
+    // ⚠️ IMPORTANTE:
+    // Laravel genera el token real ANTES de hashearlo.
+    // Como no lo tenemos, generamos uno nuevo y lo guardamos correctamente.
+
+    $token = Str::random(60);
+
+    DB::table('password_reset_tokens')
+        ->where('email', $request->email)
+        ->update([
+            'token' => Hash::make($token),
+            'created_at' => now(),
+        ]);
+
+    return response()->json([
+        'token_real' => $token,
+        'token_hash_guardado' => $record->token
+    ]);
+});
+
+//-----------------------------------------------------------
+//SOLO DESARROLLLO END
+//-----------------------------------------------------------
 
 
 
@@ -29,7 +93,38 @@ Route::post('/register', [AuthController::class, 'register'])
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1'); // Login Máx 5 intentos por minuto
 
+Route::post('/forgot-password', function (Request $request) {
+    $request->validate(['email' => 'required|email']);
 
+    $status = Password::sendResetLink(
+        $request->only('email')
+    );
+
+    return $status === Password::RESET_LINK_SENT
+        ? response()->json(['message' => 'Email enviado'])
+        : response()->json(['error' => 'No se pudo enviar el email'], 400);
+});
+
+Route::post('/reset-password', function (Request $request) {
+    $request->validate([
+        'token' => 'required',
+        'email' => 'required|email',
+        'password' => 'required|min:6|confirmed',
+    ]);
+
+    $status = Password::reset(
+        $request->only('email', 'password', 'password_confirmation', 'token'),
+        function ($user, $password) {
+            $user->forceFill([
+                'password' => Hash::make($password)
+            ])->save();
+        }
+    );
+
+    return $status === Password::PASSWORD_RESET
+        ? response()->json(['message' => 'Contraseña actualizada'])
+        : response()->json(['error' => 'Token inválido'], 400);
+});
 
 
 
@@ -83,6 +178,60 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
+
+
+
+
+
+    // Crear oferta
+    Route::post('/surprises/{surpriseId}/offers', [OfferController::class, 'store']);
+
+    // Listar ofertas de una sorpresa
+    Route::get('/surprises/{surpriseId}/offers', [OfferController::class, 'listBySurprise']);
+
+    // Contraoferta (regateo)
+    Route::post('/offers/{offerId}/counter', [OfferController::class, 'counterOffer']);
+
+    // Aceptar oferta
+    Route::post('/offers/{offerId}/accept', [OfferController::class, 'accept']);
+
+
+
+
+
+
+
+
+
+
+    // Conversaciones
+    Route::get('/conversations', [ConversationController::class, 'index']);
+    Route::post('/conversations', [ConversationController::class, 'store']);
+    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy']);
+
+    // Mensajes
+    Route::get('/conversations/{conversationId}/messages', [MessageController::class, 'index']);
+    Route::post('/messages', [MessageController::class, 'store']);
+
+    // Mensajes por sorpresa (auto crea conversación)
+    Route::post('/surprises/{surpriseId}/messages', [MessageController::class, 'storeBySurprise']);
+
+
+
+
+
+
+    Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
+        $request->fulfill();
+        return response()->json(['message' => 'Email verificado correctamente']);
+    })->middleware(['auth:sanctum', 'signed'])->name('verification.verify');
+
+    Route::post('/email/verification-notification', function (Request $request) {
+        $request->user()->sendEmailVerificationNotification();
+        return response()->json(['message' => 'Email de verificación reenviado']);
+    })->middleware(['auth:sanctum', 'throttle:3,1']);
+
+
 
 
     Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete'])

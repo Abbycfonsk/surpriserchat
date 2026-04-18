@@ -12,7 +12,7 @@ class Message extends Model
         'content',
         'image',
     ];
-    //
+
     public function conversation()
     {
         return $this->belongsTo(Conversation::class);

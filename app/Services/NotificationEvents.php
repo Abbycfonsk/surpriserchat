@@ -166,6 +166,33 @@ class NotificationEvents
             ['surprise_id' => $surprise->id]
         );
     }
+    public static function messageSent(\App\Models\Conversation $conversation, \App\Models\Message $message)
+    {
+        $surprise = $conversation->surprise;
+        $senderId = $message->sender_id;
+
+        // Determinar receptor
+        if ($senderId === $conversation->creator_id) {
+            $receiverId = $conversation->genius_id;
+            $title = 'Nuevo mensaje del creador';
+            $body = 'Has recibido un nuevo mensaje en la sorpresa.';
+        } else {
+            $receiverId = $conversation->creator_id;
+            $title = 'Nuevo mensaje del genius';
+            $body = 'Has recibido un nuevo mensaje en la sorpresa.';
+        }
+
+        \App\Helpers\Notify::info(
+            $receiverId,
+            $title,
+            $body,
+            [
+                'surprise_id' => $surprise->id,
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+            ]
+        );
+    }
 
     /* ---------------------------------------------------------
      *  REVIEW EVENTS
@@ -184,6 +211,36 @@ class NotificationEvents
                 'rating_surprise'   => $review->rating_surprise,
             ]
         );
+    }
+    public static function offerCountered(Offer $offer, \App\Models\OfferBid $bid)
+    {
+        $surprise = $offer->surprise;
+
+        // Si el que contraoferta es el genius, notificamos al creador
+        if ($bid->role === 'genius') {
+            Notify::info(
+                $surprise->creator_id,
+                'Nueva contraoferta del genius',
+                'El genius ha enviado una contraoferta.',
+                [
+                    'surprise_id' => $surprise->id,
+                    'offer_id'    => $offer->id,
+                    'bid_id'      => $bid->id,
+                ]
+            );
+        } else {
+            // Si es el creador, notificamos al genius
+            Notify::info(
+                $offer->genius_id,
+                'Nueva contraoferta del creador',
+                'El creador ha enviado una contraoferta.',
+                [
+                    'surprise_id' => $surprise->id,
+                    'offer_id'    => $offer->id,
+                    'bid_id'      => $bid->id,
+                ]
+            );
+        }
     }
 
     /* ---------------------------------------------------------
