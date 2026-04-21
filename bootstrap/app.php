@@ -12,9 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
 
-        // ⭐ REGISTRO DE TU MIDDLEWARE PERSONALIZADO
+        // ⭐ REGISTRO CORRECTO DE MIDDLEWARES PERSONALIZADOS
         $middleware->alias([
             'geniusPrivilege' => \App\Http\Middleware\CheckGeniusPrivileges::class,
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -18,8 +18,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-
-
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\DisputeController;
 
 // Ruta de prueba
 /*Route::get('/ping', function () {
@@ -84,6 +84,32 @@ Route::post('/dev/get-reset-token', function (Request $request) {
 //SOLO DESARROLLLO END
 //-----------------------------------------------------------
 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/surprises/{id}/dispute', [DisputeController::class, 'openDispute']);
+    Route::get('/disputes/{id}', [DisputeController::class, 'show']);
+    Route::get('/my/disputes', [DisputeController::class, 'myDisputes']);
+    Route::get('/users/{id}/disputes/creator', [DisputeController::class, 'disputesAsCreator']);
+    Route::get('/users/{id}/disputes/genius', [DisputeController::class, 'disputesAsGenius']);
+});
+
+
+
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+
+    Route::get('/admin/dashboard', [AdminController::class, 'dashboard']);
+    Route::get('/admin/disputes', [AdminController::class, 'listDisputes']);
+    Route::post('/admin/disputes/{id}/resolve', [AdminController::class, 'resolveDispute']);
+    Route::get('/admin/users', [AdminController::class, 'listUsers']);
+    Route::post('/admin/users/{id}/ban', [AdminController::class, 'banUser']);
+    Route::post('/admin/users/{id}/unban', [AdminController::class, 'unbanUser']);
+    Route::get('/admin/surprises', [AdminController::class, 'listSurprises']);
+    Route::post('/admin/surprises/{id}/force-cancel', [AdminController::class, 'forceCancel']);
+});
+
+
+
+
+
 
 
 
@@ -96,13 +122,19 @@ Route::post('/login', [AuthController::class, 'login'])
 Route::post('/forgot-password', function (Request $request) {
     $request->validate(['email' => 'required|email']);
 
-    $status = Password::sendResetLink(
-        $request->only('email')
-    );
+    try {
+        $status = Password::sendResetLink(
+            $request->only('email')
+        );
 
-    return $status === Password::RESET_LINK_SENT
-        ? response()->json(['message' => 'Email enviado'])
-        : response()->json(['error' => 'No se pudo enviar el email'], 400);
+        return $status === Password::RESET_LINK_SENT
+            ? response()->json(['message' => 'Email enviado'])
+            : response()->json(['error' => $status], 400);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage()
+        ], 500);
+    }
 });
 
 Route::post('/reset-password', function (Request $request) {
@@ -180,7 +212,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
 
 
-
+    Route::get('/messages/file/{id}', [MessageController::class, 'download']);
 
 
     // Crear oferta

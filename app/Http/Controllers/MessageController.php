@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Services\SanitizerService;
 use App\Services\NotificationEvents;
 use App\Services\AuditService;
+use App\Services\FileSecurityService;
 
 class MessageController extends Controller
 {
@@ -103,8 +104,23 @@ class MessageController extends Controller
 
         // Guardar archivo si existe
         $path = null;
+
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store("messages", 'public');
+
+            $file = $request->file('image');
+
+            // 1. Validar MIME real
+            if (!FileSecurityService::validateRealMime($file)) {
+                return response()->json([
+                    'error' => 'El archivo no coincide con su tipo real. Posible archivo malicioso.'
+                ], 400);
+            }
+
+            // 2. Sanitizar nombre
+            $safeName = FileSecurityService::sanitizeFilename($file->getClientOriginalName());
+
+            // 3. Guardar con nombre seguro
+            $path = $file->storeAs("messages", $safeName, 'public');
         }
 
         // Crear mensaje
@@ -130,6 +146,35 @@ class MessageController extends Controller
         return response()->json($message);
     }
 
+
+    public function download($id)
+    {
+        $userId = Auth::id();
+        $message = Message::with('conversation')->findOrFail($id);
+
+        // Permisos
+        if (!in_array($userId, [
+            $message->conversation->creator_id,
+            $message->conversation->genius_id
+        ])) {
+            return response()->json(['error' => 'Not authorized'], 403);
+        }
+
+        if (!$message->image) {
+            return response()->json(['error' => 'No file'], 404);
+        }
+
+        // Auditoría
+        AuditService::log(
+            'file_downloaded',
+            'Message',
+            $message->id,
+            null,
+            ['file' => $message->image]
+        );
+
+        return response()->download(storage_path("app/public/" . $message->image));
+    }
     // Enviar mensaje por sorpresa (auto-crea conversación si no existe)
     public function storeBySurprise(Request $request, $surpriseId)
     {
