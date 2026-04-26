@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'geniusPrivilege' => \App\Http\Middleware\CheckGeniusPrivileges::class,
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
+            'check.suspended' => \App\Http\Middleware\CheckSuspended::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

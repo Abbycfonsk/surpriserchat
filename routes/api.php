@@ -20,6 +20,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\DisputeController;
+use App\Http\Controllers\GeniusController;
+use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\SurpriseFileController;
+use App\Http\Controllers\UserSkillController;
 
 // Ruta de prueba
 /*Route::get('/ping', function () {
@@ -84,15 +88,140 @@ Route::post('/dev/get-reset-token', function (Request $request) {
 //SOLO DESARROLLLO END
 //-----------------------------------------------------------
 
+
+/* ============================================================
+ *  PUBLIC ROUTES (sin autenticación)
+ * ============================================================ */
+
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:3,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+
+Route::post('/forgot-password', function (Request $request) {
+    // ...
+});
+
+Route::post('/reset-password', function (Request $request) {
+    // ...
+});
+
+
+/* ============================================================
+ *  AUTHENTICATED ROUTES (auth:sanctum)
+ * ============================================================ */
+
 Route::middleware('auth:sanctum')->group(function () {
+
+    /* -------------------------
+     *  USER
+     * ------------------------- */
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/me', fn(Request $request) => response()->json($request->user()));
+    Route::put('/user/profile', [UserController::class, 'updateProfile']);
+    Route::get('/users/{id}/dashboard', [UserController::class, 'dashboard']);
+
+    /* -------------------------
+     *  SURPRISES
+     * ------------------------- */
+    Route::post('/surprises', [SurpriseController::class, 'store']);
+    Route::put('/surprises/{id}', [SurpriseController::class, 'update']);
+    Route::get('/surprises', [SurpriseController::class, 'index']);
+    Route::get('/surprises/{id}', [SurpriseController::class, 'show']);
+    Route::delete('/surprises/{id}', [SurpriseController::class, 'destroy']);
+    Route::post('/surprises/{id}/start', [SurpriseController::class, 'start']);
+    Route::post('/surprises/{id}/deliver', [SurpriseController::class, 'deliver']);
+    Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete']);
+    Route::post('/surprises/{id}/cancel', [SurpriseController::class, 'cancel']);
+
+    Route::get('/users/{id}/surprises-created', [SurpriseController::class, 'byCreator']);
+    Route::get('/users/{id}/surprises-genius', [SurpriseController::class, 'byGenius']);
+
+    /* -------------------------
+     *  DISPUTES
+     * ------------------------- */
     Route::post('/surprises/{id}/dispute', [DisputeController::class, 'openDispute']);
     Route::get('/disputes/{id}', [DisputeController::class, 'show']);
     Route::get('/my/disputes', [DisputeController::class, 'myDisputes']);
     Route::get('/users/{id}/disputes/creator', [DisputeController::class, 'disputesAsCreator']);
     Route::get('/users/{id}/disputes/genius', [DisputeController::class, 'disputesAsGenius']);
+
+    /* -------------------------
+     *  CONVERSATIONS & MESSAGES
+     * ------------------------- */
+    Route::get('/conversations', [ConversationController::class, 'index']);
+    Route::post('/conversations', [ConversationController::class, 'store']);
+    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy']);
+
+    Route::get('/conversations/{conversationId}/messages', [MessageController::class, 'index']);
+    Route::post('/messages', [MessageController::class, 'store']);
+    Route::post('/surprises/{surpriseId}/messages', [MessageController::class, 'storeBySurprise']);
+    Route::get('/messages/file/{id}', [MessageController::class, 'download']);
+
+    /* -------------------------
+     *  OFFERS
+     * ------------------------- */
+    Route::post('/surprises/{surpriseId}/offers', [OfferController::class, 'store']);
+    Route::get('/surprises/{surpriseId}/offers', [OfferController::class, 'listBySurprise']);
+    Route::post('/offers/{offerId}/counter', [OfferController::class, 'counterOffer']);
+    Route::post('/offers/{offerId}/accept', [OfferController::class, 'accept']);
+
+    /* -------------------------
+     *  FILES
+     * ------------------------- */
+    Route::post('/surprises/{id}/files', [SurpriseFileController::class, 'store']);
+    Route::get('/surprises/{id}/files', [SurpriseFileController::class, 'index']);
+    Route::get('/files/{id}/download', [SurpriseFileController::class, 'download']);
+
+    /* -------------------------
+     *  NOTIFICATIONS
+     * ------------------------- */
+    Route::get('/users/{id}/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+
+    /* -------------------------
+     *  REVIEWS
+     * ------------------------- */
+    Route::post('/surprises/{id}/review', [ReviewController::class, 'store']);
+    Route::get('/users/{id}/reviews', [ReviewController::class, 'byUser']);
+    Route::get('/users/{id}/rating', [ReviewController::class, 'rating']);
+
+    /* -------------------------
+     *  SKILLS
+     * ------------------------- */
+    Route::get('/skills', [SkillController::class, 'index']);
+    Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
+    Route::post('/users/{id}/skills', [SkillController::class, 'assignSkill']);
+    Route::delete('/users/{id}/skills/{skillId}', [SkillController::class, 'removeSkill']);
+
+    Route::post('/users/{id}/proposed-skills', [SkillController::class, 'updateProposedSkills']);
+
+    Route::get('/skills/{skillId}/top', [TopSkillController::class, 'topBySkill']);
+    Route::get('/skills/{skill}/ranking', [UserSkillController::class, 'ranking']);
+    Route::get('/users/{user}/skills/{skill}/progress', [UserSkillController::class, 'progress']);
+    Route::get('/users/{user}/skills/progress', [UserSkillController::class, 'allProgress']);
+    Route::get('/users/{user}/skills/{skill}/history', [UserSkillController::class, 'history']);
+    Route::get('/users/{user}/level', [UserSkillController::class, 'globalLevel']);
+    Route::get('/users/{user}/skills/dashboard', [UserSkillController::class, 'dashboard']);
+
+    /* -------------------------
+     *  GENIUS SUGGESTIONS
+     * ------------------------- */
+    Route::get('/skills/{skillId}/genius-suggestions', [GeniusController::class, 'suggest']);
 });
 
 
+/* ============================================================
+ *  GENIUS-ONLY ROUTES (auth + check.suspended)
+ * ============================================================ */
+
+Route::middleware(['auth:sanctum', 'check.suspended'])->group(function () {
+    // Aquí van rutas EXCLUSIVAS del genio (si las tienes)
+});
+
+
+/* ============================================================
+ *  ADMIN ROUTES (auth + admin)
+ * ============================================================ */
 
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
@@ -104,211 +233,4 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::post('/admin/users/{id}/unban', [AdminController::class, 'unbanUser']);
     Route::get('/admin/surprises', [AdminController::class, 'listSurprises']);
     Route::post('/admin/surprises/{id}/force-cancel', [AdminController::class, 'forceCancel']);
-});
-
-
-
-
-
-
-
-
-
-Route::post('/register', [AuthController::class, 'register'])
-    ->middleware('throttle:3,1'); // Registro Máx 3 registros por minuto
-Route::post('/login', [AuthController::class, 'login'])
-    ->middleware('throttle:5,1'); // Login Máx 5 intentos por minuto
-
-Route::post('/forgot-password', function (Request $request) {
-    $request->validate(['email' => 'required|email']);
-
-    try {
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
-
-        return $status === Password::RESET_LINK_SENT
-            ? response()->json(['message' => 'Email enviado'])
-            : response()->json(['error' => $status], 400);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
-
-Route::post('/reset-password', function (Request $request) {
-    $request->validate([
-        'token' => 'required',
-        'email' => 'required|email',
-        'password' => 'required|min:6|confirmed',
-    ]);
-
-    $status = Password::reset(
-        $request->only('email', 'password', 'password_confirmation', 'token'),
-        function ($user, $password) {
-            $user->forceFill([
-                'password' => Hash::make($password)
-            ])->save();
-        }
-    );
-
-    return $status === Password::PASSWORD_RESET
-        ? response()->json(['message' => 'Contraseña actualizada'])
-        : response()->json(['error' => 'Token inválido'], 400);
-});
-
-
-
-
-
-Route::get('/surprises/by-genius/{id}', function ($id) {
-    return Surprise::where('genius_id', $id)->get();
-})->middleware('auth:sanctum'); // ruta rara, nose si sirve o no aun
-
-
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout', [AuthController::class, 'logout']); //DESLOGUEARTE
-    Route::get('/me', function (Request $request) {
-        return response()->json($request->user());
-    }); //INFO DEL USUARIO LOGUEADO
-    Route::post('/surprises', [SurpriseController::class, 'store']); //CREAR UNA SORPRESA
-    Route::put('/surprises/{id}', [SurpriseController::class, 'update']); //MODIFICAR UNA SORPRESA
-    Route::get('/conversations', [ConversationController::class, 'index']); //LISTAR TUS CONVERSACIONES
-    Route::post('/conversations', [ConversationController::class, 'store']); //CREAR UNA CONVERSACIÓN
-    Route::get('/messages/{conversation}', [MessageController::class, 'index']); //LISTAR MENSAJES DE UNA CONVERSACIÓN
-    Route::post('/messages', [MessageController::class, 'store']); //ENVIAR MENSAJES
-    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy']); //ELIMINAR UNA CONVERSACIÓN/MENSAJES
-    Route::get('/skills', [SkillController::class, 'index']); //LISTADO DE SKILLS
-    Route::get('/users/{id}/rating', [\App\Http\Controllers\ReviewController::class, 'rating']); //rating del usuario logueado, falta probar si sale todo las valoraciones como creador y genio o solo genio
-    Route::get('/genius/profile', function (Request $request) {
-        $user = User::find($request->user()->id);
-
-        return response()->json([
-            'level' => $user->genius_level,
-            'points' => $user->genius_points,
-            'total_surprises' => $user->genius_total_surprises,
-            'avg_rating' => $user->genius_avg_rating,
-            'allowed_sizes' => $user->allowedSurpriseSizes(),
-            'max_active' => $user->maxActiveSurprises(),
-            'can_receive_initial' => $user->canReceiveInitialPayment(),
-            'can_accept_urgent' => $user->canAcceptUrgent(),
-            'can_accept_premium' => $user->canAcceptPremium(),
-        ]);
-    }); //PERFIL DEL GENIO
-    Route::post('/surprises/{id}/review', [\App\Http\Controllers\ReviewController::class, 'store']); //CREAR UNA RESEÑA
-    Route::get('/surprises/{id}/offers', [\App\Http\Controllers\OfferController::class, 'listBySurprise']); //LISTAR OFERTAS DE UNA SORPRESA
-    Route::get('/users/{id}/notifications', [NotificationController::class, 'index']); //LISTAR LAS NOTIFICACIONES DE UN USUARIO
-    Route::get('/users/{id}/reviews', [\App\Http\Controllers\ReviewController::class, 'byUser']); //LISTAR RESEÑAS DE UN USUARIO
-    Route::get('/surprises', [SurpriseController::class, 'index']); // LISTADO DE TODAS LAS SORPRESAS EN TODOS LOS ESTADOS Y DE TODOS LOS USUARIOS
-    Route::get('/surprises/{id}', [SurpriseController::class, 'show']); //BUSCA UNA SORPRESA POR SU ID
-    Route::get('/users/{id}/surprises-created', [SurpriseController::class, 'byCreator']); //LISTAR LAS SORPRESAS CREADAS POR UN USUSARIO CONCRETO
-    Route::get('/users/{id}/surprises-genius', [SurpriseController::class, 'byGenius']); //LISTA LAS SOPRESAS DONDE EL USUSARIO ACTUÓ COMO GENIO
-
-
-
-
-
-    Route::put('/user/profile', [UserController::class, 'updateProfile']);
-
-
-    Route::get('/messages/file/{id}', [MessageController::class, 'download']);
-
-
-    // Crear oferta
-    Route::post('/surprises/{surpriseId}/offers', [OfferController::class, 'store']);
-
-    // Listar ofertas de una sorpresa
-    Route::get('/surprises/{surpriseId}/offers', [OfferController::class, 'listBySurprise']);
-
-    // Contraoferta (regateo)
-    Route::post('/offers/{offerId}/counter', [OfferController::class, 'counterOffer']);
-
-    // Aceptar oferta
-    Route::post('/offers/{offerId}/accept', [OfferController::class, 'accept']);
-
-
-
-
-
-
-
-
-
-
-    // Conversaciones
-    Route::get('/conversations', [ConversationController::class, 'index']);
-    Route::post('/conversations', [ConversationController::class, 'store']);
-    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy']);
-
-    // Mensajes
-    Route::get('/conversations/{conversationId}/messages', [MessageController::class, 'index']);
-    Route::post('/messages', [MessageController::class, 'store']);
-
-    // Mensajes por sorpresa (auto crea conversación)
-    Route::post('/surprises/{surpriseId}/messages', [MessageController::class, 'storeBySurprise']);
-
-
-
-
-
-
-    Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
-        $request->fulfill();
-        return response()->json(['message' => 'Email verificado correctamente']);
-    })->middleware(['auth:sanctum', 'signed'])->name('verification.verify');
-
-    Route::post('/email/verification-notification', function (Request $request) {
-        $request->user()->sendEmailVerificationNotification();
-        return response()->json(['message' => 'Email de verificación reenviado']);
-    })->middleware(['auth:sanctum', 'throttle:3,1']);
-
-
-
-
-    Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete'])
-        ->middleware('auth:sanctum');
-
-
-    Route::get('/skills/{skillId}/top', [TopSkillController::class, 'topBySkill']); //LISTA TOP10 DE USUARIO X SKILL
-
-    // Ver skills (propuestas + activas)
-    Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
-
-    // Actualizar skills propuestas (genio)
-    Route::post('/users/{id}/proposed-skills', [SkillController::class, 'updateProposedSkills'])
-        ->middleware('auth:sanctum');
-
-    // Ofertas
-    Route::post('/surprises/{id}/offers', [\App\Http\Controllers\OfferController::class, 'store']);
-    Route::post('/offers/{id}/accept', [\App\Http\Controllers\OfferController::class, 'accept']);
-    // Notificaciones
-    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-    Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-
-    Route::delete('/surprises/{id}', [SurpriseController::class, 'destroy']);
-    /*Route::post('/surprises/{id}/files', [SurpriseController::class, 'addFile']);*/
-    Route::post('/surprises/{id}/start', [SurpriseController::class, 'start']);
-    Route::post('/surprises/{id}/deliver', [SurpriseController::class, 'deliver']);
-    Route::post('/surprises/{id}/complete', [SurpriseController::class, 'complete']);
-    Route::post('/surprises/{id}/cancel', [SurpriseController::class, 'cancel']);
-
-    Route::post('/users/{id}/skills', [SkillController::class, 'assignSkill']);
-    Route::delete('/users/{id}/skills/{skillId}', [SkillController::class, 'removeSkill']);
-    Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
-
-    Route::get('/users/{user}/skills/{skill}/progress', [\App\Http\Controllers\UserSkillController::class, 'progress']); /*solo se usa Use arriba si el nombre del controlador no lleva ruta, sino asi te evitas poner un Use */
-    Route::get('/users/{user}/skills/progress', [\App\Http\Controllers\UserSkillController::class, 'allProgress']);
-    Route::get('/skills/{skill}/ranking', [\App\Http\Controllers\UserSkillController::class, 'ranking']);
-    Route::get('/users/{user}/skills/{skill}/history', [\App\Http\Controllers\UserSkillController::class, 'history']);
-    Route::get('/users/{user}/level', [\App\Http\Controllers\UserSkillController::class, 'globalLevel']);
-    Route::get('/users/{user}/skills/dashboard', [\App\Http\Controllers\UserSkillController::class, 'dashboard']);
-
-    Route::get('/skills/{skillId}/genius-suggestions', [\App\Http\Controllers\GeniusController::class, 'suggest']);
-
-    Route::post('/surprises/{id}/files', [\App\Http\Controllers\SurpriseFileController::class, 'store']);
-    Route::get('/surprises/{id}/files', [\App\Http\Controllers\SurpriseFileController::class, 'index']);
-    Route::get('/files/{id}/download', [\App\Http\Controllers\SurpriseFileController::class, 'download']);
-
-    Route::get('/users/{id}/dashboard', [\App\Http\Controllers\UserController::class, 'dashboard']);
 });

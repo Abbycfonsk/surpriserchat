@@ -7,6 +7,7 @@ use App\Models\Surprise;
 use App\Models\Dispute;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\NotificationEvents;
 
 class AdminController extends Controller
 {
@@ -33,12 +34,57 @@ class AdminController extends Controller
     // ============================
     //  DISPUTAS
     // ============================
-
-    public function listDisputes()
+    public function listDisputes(Request $request)
     {
-        $disputes = Dispute::with(['surprise', 'creator', 'genius'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $query = Dispute::with(['surprise', 'creator', 'genius']);
+
+        // ============================
+        // FILTROS OPCIONALES
+        // ============================
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->has('winner')) {
+            $query->where('winner', $request->winner);
+        }
+
+        if ($request->has('creator_id')) {
+            $query->where('creator_id', $request->creator_id);
+        }
+
+        if ($request->has('genius_id')) {
+            $query->where('genius_id', $request->genius_id);
+        }
+
+        if ($request->has('surprise_id')) {
+            $query->where('surprise_id', $request->surprise_id);
+        }
+
+        if ($request->has('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->has('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('reason', 'LIKE', "%$search%")
+                    ->orWhere('resolution', 'LIKE', "%$search%");
+            });
+        }
+
+        // ============================
+        // ORDEN Y PAGINACIÓN
+        // ============================
+
+        $query->orderBy('created_at', 'desc');
+
+        $disputes = $query->paginate(20);
 
         return response()->json([
             'success' => true,
@@ -48,29 +94,56 @@ class AdminController extends Controller
 
     public function resolveDispute(Request $request, $id)
     {
-        $request->validate([
-            'resolution' => 'required|string|max:500',
-            'winner' => 'required|in:creator,genius,none'
-        ]);
+        $admin = $request->user();
 
-        $dispute = Dispute::findOrFail($id);
+        if (!$admin->is_admin) {
+            return response()->json(['error' => 'Not authorized'], 403);
+        }
+
+        $dispute = \App\Models\Dispute::with(['surprise', 'creator', 'genius'])->findOrFail($id);
 
         if ($dispute->status !== 'open') {
             return response()->json(['error' => 'Dispute already resolved'], 400);
         }
 
-        $dispute->status = 'resolved';
-        $dispute->resolution = $request->resolution;
+        $request->validate([
+            'winner' => 'required|in:creator,genius,none',
+            'resolution' => 'required|string|max:1000'
+        ]);
+
+        // Actualizar disputa
         $dispute->winner = $request->winner;
+        $dispute->resolution = $request->resolution;
+        $dispute->status = 'resolved';
         $dispute->resolved_at = now();
         $dispute->save();
 
+        // Penalización automática si pierde el genio
+        if ($dispute->winner === 'creator') {
+            \App\Services\DisputePenaltyService::applyPenalty($dispute);
+        }
+
+        // Auditoría
+        \App\Services\AuditService::log(
+            'dispute_resolved',
+            'Dispute',
+            $dispute->id,
+            ['status' => 'open'],
+            [
+                'status' => 'resolved',
+                'winner' => $dispute->winner
+            ]
+        );
+
+        // Notificación
+        NotificationEvents::disputeResolved($dispute);
+
         return response()->json([
             'success' => true,
-            'message' => 'Dispute resolved successfully'
+            'message' => 'Dispute resolved successfully',
+            'data' => $dispute
         ]);
     }
-
     // ============================
     //  USUARIOS
     // ============================

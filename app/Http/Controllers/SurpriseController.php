@@ -324,18 +324,57 @@ class SurpriseController extends Controller
         $surprise = Surprise::findOrFail($id);
         $user = $request->user();
 
-        // Solo el creador puede cancelar
-        if ($user->id !== $surprise->creator_id) {
-            return response()->json(['error' => 'Only the creator can cancel the surprise'], 403);
+        // QUIÉN CANCELA
+        if ($user->id === $surprise->creator_id) {
+            $cancelledBy = 'creator';
+        } elseif ($user->id === $surprise->genius_id) {
+            $cancelledBy = 'genius';
+        } elseif ($user->is_admin) {
+            $cancelledBy = 'admin';
+        } else {
+            return response()->json(['error' => 'You cannot cancel this surprise'], 403);
         }
 
-        // Validación de estado
+        // VALIDAR ESTADO
         if (!in_array($surprise->status, ['open', 'in_progress'])) {
             return response()->json(['error' => 'This surprise cannot be cancelled'], 400);
         }
 
+        // VALIDAR MOTIVO
+        $request->validate([
+            'reason_key' => 'required|in:illness,personal_issue,force_majeure,technical_issue,no_time,uncomfortable,cant_now,no_reason',
+            'reason_text' => 'nullable|string|max:1000',
+        ]);
+
+        $reasonKey = $request->reason_key;
+
+        // CLASIFICAR MOTIVO
+        $reasonType = \App\Services\CancellationReasonService::classify($reasonKey);
+
+        // REGISTRAR CANCELACIÓN
+        \App\Models\Cancellation::create([
+            'surprise_id' => $surprise->id,
+            'genius_id' => $surprise->genius_id,
+            'creator_id' => $surprise->creator_id,
+            'cancelled_by' => $cancelledBy,
+            'reason_key' => $reasonKey,
+            'reason_text' => $request->reason_text,
+        ]);
+
+        // CAMBIAR ESTADO
         $surprise->status = 'cancelled';
         $surprise->save();
+
+        // PENALIZACIÓN SOLO SI CANCELA EL GENIO
+        if ($cancelledBy === 'genius') {
+            \App\Services\PenaltyService::applyCancellationPenalty(
+                $surprise->genius_id,
+                $reasonType,
+                $reasonKey
+            );
+        }
+
+        // AUDITORÍA
         AuditService::log(
             'surprise_cancelled',
             'Surprise',
@@ -343,11 +382,14 @@ class SurpriseController extends Controller
             ['status' => $surprise->status],
             ['status' => 'cancelled']
         );
+
+        // NOTIFICACIÓN
         NotificationEvents::surpriseCancelled($surprise);
 
         return response()->json([
             'success' => true,
             'message' => 'Surprise cancelled',
+            'reason_type' => $reasonType,
             'data' => $surprise
         ]);
     }

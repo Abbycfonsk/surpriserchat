@@ -244,6 +244,39 @@ class NotificationEvents
     }
 
     /* ---------------------------------------------------------
+ *  DISPUTE EVENTS
+ * --------------------------------------------------------- */
+
+    public static function disputeResolved(\App\Models\Dispute $dispute)
+    {
+        $surprise = $dispute->surprise;
+
+        // Notificar al creador
+        Notify::info(
+            $dispute->creator_id,
+            'Disputa resuelta',
+            'La disputa ha sido resuelta por el equipo de administración.',
+            [
+                'surprise_id' => $surprise->id,
+                'dispute_id'  => $dispute->id,
+                'winner'      => $dispute->winner,
+            ]
+        );
+
+        // Notificar al genius
+        Notify::info(
+            $dispute->genius_id,
+            'Disputa resuelta',
+            'La disputa ha sido resuelta por el equipo de administración.',
+            [
+                'surprise_id' => $surprise->id,
+                'dispute_id'  => $dispute->id,
+                'winner'      => $dispute->winner,
+            ]
+        );
+    }
+
+    /* ---------------------------------------------------------
      *  SKILL EVENTS
      * --------------------------------------------------------- */
 
