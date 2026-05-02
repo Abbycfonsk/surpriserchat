@@ -26,9 +26,9 @@ use App\Http\Controllers\SurpriseFileController;
 use App\Http\Controllers\UserSkillController;
 
 // Ruta de prueba
-/*Route::get('/ping', function () {
+Route::get('/ping', function () {
     return response()->json(['message' => 'pong']);
-});*/
+});
 
 
 //-------------------------------------------------
@@ -103,7 +103,23 @@ Route::post('/forgot-password', function (Request $request) {
 Route::post('/reset-password', function (Request $request) {
     // ...
 });
+Route::post('/landing/subscribe', function (Illuminate\Http\Request $request) {
+    try {
+        $request->validate([
+            'email' => 'required|email|unique:landing_subscribers,email'
+        ]);
 
+        \DB::table('landing_subscribers')->insert([
+            'email' => $request->email,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        // Si el email ya existe, no pasa nada
+    }
+
+    return redirect('https://surpriser-landing.netlify.app/gracias.html');
+});
 
 /* ============================================================
  *  AUTHENTICATED ROUTES (auth:sanctum)
