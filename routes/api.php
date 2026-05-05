@@ -200,14 +200,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/surprises/{id}/review', [ReviewController::class, 'store']);
     Route::get('/users/{id}/reviews', [ReviewController::class, 'byUser']);
     Route::get('/users/{id}/rating', [ReviewController::class, 'rating']);
+    /////////falta un metodo que no tiene ruta en este controlador//////////
 
     /* -------------------------
      *  SKILLS
      * ------------------------- */
     Route::get('/skills', [SkillController::class, 'index']);
     Route::get('/users/{id}/skills', [SkillController::class, 'userSkills']);
-    Route::post('/users/{id}/skills', [SkillController::class, 'assignSkill']);
-    Route::delete('/users/{id}/skills/{skillId}', [SkillController::class, 'removeSkill']);
+    
 
     Route::post('/users/{id}/proposed-skills', [SkillController::class, 'updateProposedSkills']);
 
