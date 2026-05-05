@@ -118,7 +118,7 @@ Route::post('/landing/subscribe', function (Illuminate\Http\Request $request) {
         // Si el email ya existe, no pasa nada
     }
 
-    return redirect('https://surpriser-landing.netlify.app/gracias.html');
+    return redirect('https://surpriser.app/gracias.html');
 });
 
 /* ============================================================
