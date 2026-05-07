@@ -39,7 +39,7 @@ class MessageController extends Controller
         $validated = $request->validate([
             'conversation_id' => 'required|exists:conversations,id',
             'content' => 'nullable|string',
-            'image' => 'nullable|file|mimes:jpg,jpeg,png,webp,mp4,pdf|max:10240',
+            'image' => 'nullable|file|mimes:jpg,jpeg,png,webp,mp4,pdf|max:51200',
         ]);
 
         $userId = Auth::id();
@@ -107,22 +107,22 @@ class MessageController extends Controller
 
         if ($request->hasFile('image')) {
 
-            $file = $request->file('image');
+    $file = $request->file('image');
 
-            // 1. Validar MIME real
-            if (!FileSecurityService::validateRealMime($file)) {
-                return response()->json([
-                    'error' => 'El archivo no coincide con su tipo real. Posible archivo malicioso.'
-                ], 400);
-            }
+    // 1. Validar MIME real
+    if (!FileSecurityService::validateRealMime($file)) {
+        return response()->json([
+            'error' => 'El archivo no coincide con su tipo real. Posible archivo malicioso.'
+        ], 400);
+    }
 
-            // 2. Sanitizar nombre
-            $safeName = FileSecurityService::sanitizeFilename($file->getClientOriginalName());
+    // 2. Generar nombre único seguro
+    $extension = $file->getClientOriginalExtension();
+    $uniqueName = uniqid() . '_' . time() . '.' . $extension;
 
-            // 3. Guardar con nombre seguro
-            $path = $file->storeAs("messages", $safeName, 'public');
-        }
-
+    // 3. Guardar archivo con nombre único
+    $path = $file->storeAs("messages", $uniqueName, 'public');
+}
         // Crear mensaje
         $message = Message::create([
             'conversation_id' => $conversation->id,

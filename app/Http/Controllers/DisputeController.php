@@ -14,42 +14,45 @@ class DisputeController extends Controller
 
     // POST /surprises/{id}/dispute
     public function openDispute(Request $request, $id)
-    {
-        $user = $request->user();
-        $surprise = Surprise::findOrFail($id);
+{
+    $user = $request->user();
+    $surprise = Surprise::findOrFail($id);
 
-        if (!in_array($user->id, [$surprise->creator_id, $surprise->genius_id])) {
-            return response()->json(['error' => 'Not authorized'], 403);
-        }
-
-        if (!in_array($surprise->status, ['delivered', 'completed'])) {
-            return response()->json(['error' => 'Dispute not allowed in this status'], 400);
-        }
-
-        $request->validate([
-            'reason' => 'required|string|max:500'
-        ]);
-
-        if (Dispute::where('surprise_id', $id)->where('status', 'open')->exists()) {
-            return response()->json(['error' => 'Dispute already open'], 400);
-        }
-
-        $dispute = Dispute::create([
-            'surprise_id' => $surprise->id,
-            'creator_id' => $surprise->creator_id,
-            'genius_id' => $surprise->genius_id,
-            'opened_by' => $user->id,
-            'reason' => $request->reason,
-            'status' => 'open',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Dispute opened',
-            'data' => $dispute
-        ]);
+    if (!in_array($user->id, [$surprise->creator_id, $surprise->genius_id])) {
+        return response()->json(['error' => 'Not authorized'], 403);
     }
 
+    if (!in_array($surprise->status, ['delivered', 'completed'])) {
+        return response()->json(['error' => 'Dispute not allowed in this status'], 400);
+    }
+
+    $request->validate([
+        'reason' => 'required|string|max:500'
+    ]);
+
+    if (Dispute::where('surprise_id', $id)->where('status', 'open')->exists()) {
+        return response()->json(['error' => 'Dispute already open'], 400);
+    }
+
+    $dispute = Dispute::create([
+        'surprise_id' => $surprise->id,
+        'creator_id' => $surprise->creator_id,
+        'genius_id' => $surprise->genius_id,
+        'opened_by' => $user->id,
+        'reason' => $request->reason,
+        'status' => 'open',
+    ]);
+
+    // ⭐ CAMBIAR ESTADO DE LA SORPRESA
+    $surprise->status = 'disputed';
+    $surprise->save();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Dispute opened',
+        'data' => $dispute
+    ]);
+}
     // ============================
     //  VER UNA DISPUTA
     // ============================

@@ -51,8 +51,7 @@ class SurpriseController extends Controller
             'genius_id' => 'nullable|exists:users,id',
             'title' => 'required|string',
             'description' => 'nullable|string',
-            'status' => 'required|string|in:open,in_progress,delivered,completed,cancelled',
-            'price' => 'nullable|numeric',
+            'status' => 'sometimes|string|in:open,in_progress,delivered,completed,cancelled',            'price' => 'nullable|numeric',
             'deadline' => 'nullable|date',
             'skill_id' => 'required|exists:skills,id',
             'size' => 'required|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
@@ -394,16 +393,24 @@ class SurpriseController extends Controller
         ]);
     }
     // Eliminar una sorpresa
-    public function destroy($id)
-    {
-        $surprise = Surprise::findOrFail($id);
-        $surprise->delete();
+ public function destroy($id)
+{
+    $surprise = Surprise::findOrFail($id);
 
+    // Solo se puede borrar si está en estado open
+    if ($surprise->status !== 'open') {
         return response()->json([
-            'success' => true,
-            'message' => 'Surprise deleted successfully'
-        ]);
+            'error' => 'Solo es posible eliminar sorpresas en estado Open'
+        ], 400);
     }
+
+    $surprise->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Sorpresa eliminada con exito'
+    ]);
+}
 
     // Añadir archivos a una sorpresa
     /*public function addFile(Request $request, $id)

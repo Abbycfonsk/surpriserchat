@@ -13,31 +13,32 @@ use Illuminate\Support\Str;
 class AuthController extends Controller
 {
     public function register(Request $request)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6|confirmed',
-        ]);
+{
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users,email',
+        'password' => 'required|string|min:6|confirmed',
+        'is_genius' => 'nullable|boolean',
+    ]);
 
-        // ⭐ Sanitizar SOLO texto libre
-        $validated['name'] = SanitizerService::clean($validated['name']);
-        $validated['email'] = SanitizerService::clean($validated['email']);
+    // Sanitizar
+    $validated['name'] = SanitizerService::clean($validated['name']);
+    $validated['email'] = SanitizerService::clean($validated['email']);
 
-        // ❌ NUNCA sanitizar password
+    $user = User::create([
+        'name' => $validated['name'],
+        'email' => $validated['email'],
+        'password' => Hash::make($validated['password']),
+        'is_creator' => 1, // SIEMPRE creador
+        'is_genius' => $request->boolean('is_genius'), // opcional
+    ]);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-        ]);
+    $user->sendEmailVerificationNotification();
 
-        $user->sendEmailVerificationNotification();
-
-        return response()->json([
-            'message' => 'Usuario registrado. Revisa tu email para verificar la cuenta.'
-        ]);
-    }
+    return response()->json([
+        'message' => 'Usuario registrado. Revisa tu email para verificar la cuenta.'
+    ]);
+}
     public function login(Request $request)
     {
 

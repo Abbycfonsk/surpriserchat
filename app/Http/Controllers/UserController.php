@@ -97,46 +97,80 @@ class UserController extends Controller
     }
 
     public function updateProfile(Request $request)
-    {
-        $user = $request->user();
+{
+    $user = $request->user();
 
-        // Validación
-        $validated = $request->validate([
-            'name' => 'nullable|string|max:255',
-            'username' => 'nullable|string|max:100|unique:users,username,' . $user->id,
-            'bio' => 'nullable|string|max:500',
-            'phone' => 'nullable|string|max:50',
-            'location_city' => 'nullable|string|max:100',
-            'location_country' => 'nullable|string|max:100',
-            'avatar' => 'nullable|url|max:255'
-        ]);
+    // Validación
+    $validated = $request->validate([
+        'name' => 'nullable|string|max:255',
+        'username' => 'nullable|string|max:100|unique:users,username,' . $user->id,
+        'bio' => 'nullable|string|max:500',
+        'phone' => 'nullable|string|max:50',
+        'location_city' => 'nullable|string|max:100',
+        'location_country' => 'nullable|string|max:100',
+        'is_genius' => 'nullable|in:0,1', // FormData no acepta boolean
+        'avatar' => 'nullable|image|max:2048',
+    ]);
 
-        // ⭐ Sanitizar SOLO texto libre
-        foreach (['name', 'username', 'bio', 'phone', 'location_city', 'location_country', 'avatar'] as $field) {
-            if (isset($validated[$field])) {
-                $validated[$field] = SanitizerService::clean($validated[$field]);
-            }
+    // Sanitizar texto libre
+    foreach (['name', 'username', 'bio', 'phone', 'location_city', 'location_country'] as $field) {
+        if (isset($validated[$field])) {
+            $validated[$field] = SanitizerService::clean($validated[$field]);
+        }
+    }
+
+    // Convertir is_genius manualmente (FormData envía "0" o "1")
+    if ($request->has('is_genius')) {
+        $validated['is_genius'] = $request->input('is_genius') == "1" ? 1 : 0;
+    }
+
+    // ❗ BLOQUEAR desactivar genio si tiene sorpresas activas
+    if ($request->has('is_genius') && $validated['is_genius'] == 0) {
+
+        $activeSurprises = \App\Models\Surprise::where('genius_id', $user->id)
+            ->whereIn('status', ['open', 'in_progress', 'delivered', 'revision_requested'])
+            ->count();
+
+        if ($activeSurprises > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No puedes desactivar tu perfil de genio mientras tengas sorpresas activas.'
+            ], 400);
+        }
+    }
+
+    // Guardar valores antiguos para auditoría
+    $old = $user->getOriginal();
+
+    // Subida de avatar
+    if ($request->hasFile('avatar')) {
+
+        // Borrar avatar anterior si estaba en storage
+        if ($user->avatar && str_starts_with($user->avatar, '/storage/')) {
+            $oldPath = str_replace('/storage/', '', $user->avatar);
+            Storage::disk('public')->delete($oldPath);
         }
 
-        // Guardar valores antiguos para auditoría
-        $old = $user->getOriginal();
-
-        // Actualizar usuario
-        $user->update($validated);
-
-        // Auditoría
-        AuditService::log(
-            'user_profile_updated',
-            'User',
-            $user->id,
-            $old,
-            $user->getChanges()
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Profile updated successfully',
-            'data' => $user
-        ]);
+        $path = $request->file('avatar')->store('avatars', 'public');
+        $validated['avatar'] = '/storage/' . $path;
     }
+
+    // Actualizar usuario
+    $user->update($validated);
+
+    // Auditoría
+    AuditService::log(
+        'user_profile_updated',
+        'User',
+        $user->id,
+        $old,
+        $user->getChanges()
+    );
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Profile updated successfully',
+        'data' => $user
+    ]);
+}
 }

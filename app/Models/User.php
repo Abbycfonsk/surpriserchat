@@ -13,15 +13,18 @@ class User extends Authenticatable implements MustVerifyEmail
 {
     use HasFactory, HasApiTokens, Notifiable;
 
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-        // IMPORTANTE: añade aquí tus campos de genius si quieres asignarlos masivamente
-        // 'genius_level',
-        // 'genius_points',
-        // ...
-    ];
+   protected $fillable = [
+    'name',
+    'email',
+    'password',
+    'username',
+    'bio',
+    'phone',
+    'location_city',
+    'location_country',
+    'avatar',
+    'is_genius',
+];
 
     protected $hidden = [
         'password',
