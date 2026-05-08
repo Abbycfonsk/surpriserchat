@@ -14,110 +14,125 @@ use Illuminate\Support\Facades\Auth;
 class OfferController extends Controller
 {
     // Genius envía una oferta inicial
-    public function store(Request $request, $surpriseId)
-    {
-        $surprise = Surprise::findOrFail($surpriseId);
-        $user = $request->user();
+   public function store(Request $request, $surpriseId)
+{
+    $surprise = Surprise::findOrFail($surpriseId);
+    $user = $request->user();
 
-        // 1) Solo si la sorpresa está OPEN
-        if ($surprise->status !== 'open') {
-            return response()->json([
-                'error' => 'You can only send offers for open surprises'
-            ], 400);
-        }
-
-        // 2) Validación básica
-        $validated = $request->validate([
-            'price' => 'required|numeric|min:1',
-            'message' => 'nullable|string',
-            'eta_hours' => 'nullable|integer|min:1'
-        ]);
-
-        // 3) Validar rango de precio según tamaño de sorpresa
-        $range = config('surprises.price_ranges.' . $surprise->size) ?? null;
-
-        if ($range) {
-            if ($validated['price'] < $range['min'] || $validated['price'] > $range['max']) {
-                return response()->json([
-                    'error' => 'Price is not realistic for this surprise type'
-                ], 422);
-            }
-        }
-
-        // 4) Evitar más de 1 oferta activa por genius + surprise
-        $existingOffer = Offer::where('surprise_id', $surprise->id)
-            ->where('genius_id', $user->id)
-            ->whereIn('status', ['pending', 'negotiating'])
-            ->first();
-
-        if ($existingOffer) {
-            return response()->json([
-                'error' => 'You already have an active offer for this surprise'
-            ], 400);
-        }
-
-        // 5) Cooldown: no más de 1 oferta cada 30s
-        $lastOffer = Offer::where('genius_id', $user->id)
-            ->orderBy('created_at', 'desc')
-            ->first();
-
-        if ($lastOffer && $lastOffer->created_at->gt(now()->subSeconds(30))) {
-            return response()->json([
-                'error' => 'You are sending offers too fast. Please wait a bit.'
-            ], 429);
-        }
-
-        // 6) Evitar duplicados recientes (mismo price + eta + message)
-        $duplicate = Offer::where('genius_id', $user->id)
-            ->where('surprise_id', $surprise->id)
-            ->where('price', $validated['price'])
-            ->where('eta_hours', $validated['eta_hours'] ?? null)
-            ->where('message', $validated['message'] ?? null)
-            ->where('created_at', '>=', now()->subMinutes(5))
-            ->exists();
-
-        if ($duplicate) {
-            return response()->json([
-                'error' => 'You already sent an identical offer recently'
-            ], 400);
-        }
-
-        // 7) Sanitizar mensaje
-        if (isset($validated['message'])) {
-            $validated['message'] = SanitizerService::clean($validated['message']);
-        }
-
-        // 8) Crear oferta base
-        $offer = Offer::create([
-            'surprise_id' => $surprise->id,
-            'genius_id' => $user->id,
-            'price' => $validated['price'],
-            'original_price' => $validated['price'],
-            'message' => $validated['message'] ?? null,
-            'eta_hours' => $validated['eta_hours'] ?? null,
-            'status' => 'pending',
-            'creator_bid_count' => 0,
-            'genius_bid_count' => 0,
-        ]);
-
-        // 9) Auditoría
-        AuditService::log(
-            'offer_created',
-            'Offer',
-            $offer->id,
-            null,
-            $offer->toArray()
-        );
-
-        // 10) Notificación al creador
-        NotificationEvents::offerReceived($offer);
-
+    // 1) Solo si la sorpresa está OPEN
+    if ($surprise->status !== 'open') {
         return response()->json([
-            'success' => true,
-            'message' => 'Offer sent successfully',
-            'data' => $offer
-        ]);
+            'error' => 'You can only send offers for open surprises'
+        ], 400);
     }
+
+    // 2) Validación básica
+    $validated = $request->validate([
+        'price' => 'required|numeric|min:1',
+        'message' => 'nullable|string',
+        'eta_hours' => 'nullable|integer|min:1'
+    ]);
+
+    // 3) Validar rango de precio según tamaño de sorpresa
+    $range = config('surprises.price_ranges.' . $surprise->size) ?? null;
+
+    if ($range) {
+        if ($validated['price'] < $range['min'] || $validated['price'] > $range['max']) {
+            return response()->json([
+                'error' => 'Price is not realistic for this surprise type'
+            ], 422);
+        }
+    }
+
+    // 4) Evitar más de 1 oferta activa por genius + surprise
+    $existingOffer = Offer::where('surprise_id', $surprise->id)
+        ->where('genius_id', $user->id)
+        ->whereIn('status', ['pending', 'negotiating'])
+        ->first();
+
+    if ($existingOffer) {
+        return response()->json([
+            'error' => 'You already have an active offer for this surprise'
+        ], 400);
+    }
+
+    /* ============================================
+       4.5) NUEVO: Límite diario de ofertas
+       ============================================ */
+    $todayOffers = Offer::where('genius_id', $user->id)
+        ->whereDate('created_at', today())
+        ->count();
+
+    $dailyLimit = $user->dailyOfferLimit();
+
+    if ($todayOffers >= $dailyLimit) {
+        return response()->json([
+            'error' => 'You have reached your daily offer limit'
+        ], 429);
+    }
+
+    // 5) Cooldown: no más de 1 oferta cada 30s
+    $lastOffer = Offer::where('genius_id', $user->id)
+        ->orderBy('created_at', 'desc')
+        ->first();
+
+    if ($lastOffer && $lastOffer->created_at->gt(now()->subSeconds(30))) {
+        return response()->json([
+            'error' => 'You are sending offers too fast. Please wait a bit.'
+        ], 429);
+    }
+
+    // 6) Evitar duplicados recientes (mismo price + eta + message)
+    $duplicate = Offer::where('genius_id', $user->id)
+        ->where('surprise_id', $surprise->id)
+        ->where('price', $validated['price'])
+        ->where('eta_hours', $validated['eta_hours'] ?? null)
+        ->where('message', $validated['message'] ?? null)
+        ->where('created_at', '>=', now()->subMinutes(5))
+        ->exists();
+
+    if ($duplicate) {
+        return response()->json([
+            'error' => 'You already sent an identical offer recently'
+        ], 400);
+    }
+
+    // 7) Sanitizar mensaje
+    if (isset($validated['message'])) {
+        $validated['message'] = SanitizerService::clean($validated['message']);
+    }
+
+    // 8) Crear oferta base
+    $offer = Offer::create([
+        'surprise_id' => $surprise->id,
+        'genius_id' => $user->id,
+        'price' => $validated['price'],
+        'original_price' => $validated['price'],
+        'message' => $validated['message'] ?? null,
+        'eta_hours' => $validated['eta_hours'] ?? null,
+        'status' => 'pending',
+        'creator_bid_count' => 0,
+        'genius_bid_count' => 0,
+    ]);
+
+    // 9) Auditoría
+    AuditService::log(
+        'offer_created',
+        'Offer',
+        $offer->id,
+        null,
+        $offer->toArray()
+    );
+
+    // 10) Notificación al creador
+    NotificationEvents::offerReceived($offer);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Offer sent successfully',
+        'data' => $offer
+    ]);
+}
 
     // Listar ofertas de una sorpresa
     public function listBySurprise($surpriseId)

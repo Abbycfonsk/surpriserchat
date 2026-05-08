@@ -47,10 +47,17 @@ class Surprise extends Model
         return $this->hasMany(SurpriseFile::class, 'surprise_id');
     }
 
-    public function reviews()
-    {
-        return $this->hasMany(Review::class, 'surprise_id');
-    }
+   
+    public function ads()
+{
+    return $this->hasMany(SurpriseAd::class, 'surprise_id');
+}
+
+
+public function review()
+{
+    return $this->hasOne(Review::class, 'surprise_id');
+}
     public function skill()
     {
         return $this->belongsTo(Skill::class);

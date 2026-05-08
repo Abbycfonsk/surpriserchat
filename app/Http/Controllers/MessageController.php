@@ -148,33 +148,50 @@ class MessageController extends Controller
 
 
     public function download($id)
-    {
-        $userId = Auth::id();
-        $message = Message::with('conversation')->findOrFail($id);
+{
+    // ⭐ 1. Autenticación manual por token en query string
+    if (request()->has('token')) {
+        $token = \Laravel\Sanctum\PersonalAccessToken::findToken(request('token'));
 
-        // Permisos
-        if (!in_array($userId, [
-            $message->conversation->creator_id,
-            $message->conversation->genius_id
-        ])) {
-            return response()->json(['error' => 'Not authorized'], 403);
+        if ($token) {
+            \Illuminate\Support\Facades\Auth::login($token->tokenable);
         }
-
-        if (!$message->image) {
-            return response()->json(['error' => 'No file'], 404);
-        }
-
-        // Auditoría
-        AuditService::log(
-            'file_downloaded',
-            'Message',
-            $message->id,
-            null,
-            ['file' => $message->image]
-        );
-
-        return response()->download(storage_path("app/public/" . $message->image));
     }
+
+    // ⭐ 2. Obtener usuario autenticado
+    $userId = \Illuminate\Support\Facades\Auth::id();
+    if (!$userId) {
+        return response()->json(['error' => 'Not authorized'], 403);
+    }
+
+    // ⭐ 3. Buscar mensaje
+    $message = Message::with('conversation')->findOrFail($id);
+
+    // ⭐ 4. Validar permisos
+    if (!in_array($userId, [
+        $message->conversation->creator_id,
+        $message->conversation->genius_id
+    ])) {
+        return response()->json(['error' => 'Not authorized'], 403);
+    }
+
+    // ⭐ 5. Validar archivo
+    if (!$message->image) {
+        return response()->json(['error' => 'No file'], 404);
+    }
+
+    // ⭐ 6. Auditoría
+    AuditService::log(
+        'file_downloaded',
+        'Message',
+        $message->id,
+        null,
+        ['file' => $message->image]
+    );
+
+    // ⭐ 7. Descargar archivo
+    return response()->download(storage_path("app/public/" . $message->image));
+}
     // Enviar mensaje por sorpresa (auto-crea conversación si no existe)
     public function storeBySurprise(Request $request, $surpriseId)
     {

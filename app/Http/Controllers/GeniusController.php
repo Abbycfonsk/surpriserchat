@@ -9,6 +9,36 @@ use App\Models\Surprise;
 
 class GeniusController extends Controller
 {
+    public function dashboard($geniusId)
+{
+    // Últimas 10 sorpresas completadas por este genio
+    $surprises = Surprise::with([
+        'skill:id,name',
+        'review:id,surprise_id,rating,comment',
+        'files:id,surprise_id,file_path,file_type'
+    ])
+    ->where('genius_id', $geniusId)
+    ->where('status', 'completed')
+    ->orderBy('completed_at', 'desc')
+    ->limit(10)
+    ->get([
+        'id',
+        'title',
+        'description',
+        'size',
+        'skill_id',
+        'started_at',
+        'delivered_at',
+        'completed_at',
+        'hours_spent',
+        'final_price'
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'data' => $surprises
+    ]);
+}
     public function suggest($skillId)
     {
         // 1. Genius que tienen esta skill

@@ -9,3 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('surprises:check-deadlines')->hourly();
+Schedule::command('surprise_ads:notify')->everyThreeHours();
+Schedule::command('surprise_ads:expire')->hourly();

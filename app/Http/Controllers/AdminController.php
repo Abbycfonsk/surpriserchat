@@ -158,32 +158,57 @@ class AdminController extends Controller
         ]);
     }
 
-    public function banUser($id)
-    {
-        $user = User::findOrFail($id);
+public function banUser(Request $request, $id)
+{
+    $admin = $request->user();
 
-        $user->banned = 1;
-        $user->save();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'User banned successfully'
-        ]);
+    if (!$admin->is_admin) {
+        return response()->json(['error' => 'Not authorized'], 403);
     }
 
-    public function unbanUser($id)
-    {
-        $user = User::findOrFail($id);
+    $user = User::findOrFail($id);
 
-        $user->banned = 0;
-        $user->save();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'User unbanned successfully'
-        ]);
+    if ($user->banned) {
+        return response()->json(['error' => 'User already banned'], 400);
     }
 
+    $user->banned = 1;
+    $user->save();
+
+    // ⭐ Notificación al usuario baneado
+    NotificationEvents::userBanned($user->id);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'User banned successfully'
+    ]);
+}
+
+   public function unbanUser(Request $request, $id)
+{
+    $admin = $request->user();
+
+    if (!$admin->is_admin) {
+        return response()->json(['error' => 'Not authorized'], 403);
+    }
+
+    $user = User::findOrFail($id);
+
+    if (!$user->banned) {
+        return response()->json(['error' => 'User is not banned'], 400);
+    }
+
+    $user->banned = 0;
+    $user->save();
+
+    // ⭐ Notificación al usuario desbaneado
+    NotificationEvents::userUnbanned($user);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'User unbanned successfully'
+    ]);
+}
     // ============================
     //  SORPRESAS
     // ============================
@@ -200,21 +225,35 @@ class AdminController extends Controller
         ]);
     }
 
-    public function forceCancel($id)
-    {
-        $surprise = Surprise::findOrFail($id);
+   public function forceCancel(Request $request, $id)
+{
+    $admin = $request->user();
 
-        if ($surprise->status === 'cancelled') {
-            return response()->json(['error' => 'Already cancelled'], 400);
-        }
-
-        $surprise->status = 'cancelled';
-        $surprise->cancelled_by_admin = 1;
-        $surprise->save();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Surprise cancelled by admin'
-        ]);
+    if (!$admin->is_admin) {
+        return response()->json(['error' => 'Not authorized'], 403);
     }
+
+    $surprise = Surprise::findOrFail($id);
+
+    if ($surprise->status === 'cancelled') {
+        return response()->json(['error' => 'Already cancelled'], 400);
+    }
+
+    $surprise->status = 'cancelled';
+    $surprise->cancelled_by_admin = 1;
+    $surprise->save();
+
+    // ⭐ Notificar al creador
+    NotificationEvents::surpriseForceCancelled($surprise, $surprise->creator_id);
+
+    // ⭐ Notificar al genio (si existe)
+    if ($surprise->genius_id) {
+        NotificationEvents::surpriseForceCancelled($surprise, $surprise->genius_id);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Surprise cancelled by admin'
+    ]);
+}
 }

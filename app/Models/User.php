@@ -134,6 +134,58 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return in_array($this->genius_level, ['FLAME', 'GENIE', 'SULTAN']);
     }
+public function dailyOfferLimit()
+{
+    // Si tiene plan de genio, sumar extras
+    $base = match($this->level) {
+        'SPARK' => 10,
+        'FLAME' => 15,
+        'GENIE' => 25,
+        'SULTAN' => 40,
+        default => 10
+    };
+
+    // Si tiene plan de genio, añadir extras
+    if ($this->geniusPlan && $this->geniusPlan->is_active) {
+        return $base + $this->geniusPlan->extra_offers;
+    }
+
+    return $base;
+}
+/* ============================
+   LÍMITE DE SORPRESAS ACTIVAS
+   ============================ */
+
+public function activeSurpriseLimit(): int
+{
+    // Límite base por nivel
+    $base = match ($this->genius_level) {
+        'SPARK' => 1,
+        'FLAME' => 2,
+        'GENIE' => 5,
+        'SULTAN' => 10,
+        default => 0,
+    };
+
+    // Si tiene plan de genio, sumar extras
+    if (isset($this->geniusPlan) && $this->geniusPlan->is_active) {
+        return $base + ($this->geniusPlan->extra_active_surprises ?? 0);
+    }
+
+    return $base;
+}
+
+public function currentActiveSurprises(): int
+{
+    return $this->surprisesAsGenius()
+        ->whereIn('status', ['in_progress', 'delivered'])
+        ->count();
+}
+
+public function canAcceptMoreSurprises(): bool
+{
+    return $this->currentActiveSurprises() < $this->activeSurpriseLimit();
+}
 
     public function canAcceptPremium(): bool
     {

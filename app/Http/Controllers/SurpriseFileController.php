@@ -22,21 +22,60 @@ class SurpriseFileController extends Controller
     }
 
     public function download($id)
-    {
-        $file = SurpriseFile::findOrFail($id);
+{
+    // ⭐ 1. Autenticación manual por token en query string
+    if (request()->has('token')) {
+        $token = \Laravel\Sanctum\PersonalAccessToken::findToken(request('token'));
 
-        $fullPath = storage_path('app/public/' . $file->path);
-
-        if (!file_exists($fullPath)) {
-            return response()->json(['error' => 'File not found'], 404);
+        if ($token) {
+            \Illuminate\Support\Facades\Auth::login($token->tokenable);
         }
-
-        return response()->download($fullPath, $file->filename, [
-            'Content-Type' => $file->mime,
-            'Content-Disposition' => 'attachment; filename="' . $file->filename . '"'
-        ]);
     }
 
+    // ⭐ 2. Obtener usuario autenticado
+    $userId = \Illuminate\Support\Facades\Auth::id();
+    if (!$userId) {
+        return response()->json(['error' => 'Not authorized'], 403);
+    }
+
+    // ⭐ 3. Buscar archivo + sorpresa
+    $file = \App\Models\SurpriseFile::with('surprise')->findOrFail($id);
+    $surprise = $file->surprise;
+
+    // ⭐ 4. Validar permisos (solo creator o genius)
+    if (!in_array($userId, [
+        $surprise->creator_id,
+        $surprise->genius_id
+    ])) {
+        return response()->json(['error' => 'Not authorized'], 403);
+    }
+
+    // ⭐ 5. Validar existencia física del archivo
+    $fullPath = storage_path('app/public/' . $file->path);
+
+    if (!file_exists($fullPath)) {
+        return response()->json(['error' => 'File not found'], 404);
+    }
+
+    // ⭐ 6. Auditoría
+    \App\Services\AuditService::log(
+        'file_downloaded',
+        'SurpriseFile',
+        $file->id,
+        null,
+        ['file' => $file->path]
+    );
+
+    // ⭐ 7. Descargar archivo con MIME real
+    return response()->download(
+        $fullPath,
+        $file->filename,
+        [
+            'Content-Type' => $file->mime,
+            'Content-Disposition' => 'attachment; filename="' . $file->filename . '"'
+        ]
+    );
+}
     public function store(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);

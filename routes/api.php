@@ -170,7 +170,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/conversations/{conversationId}/messages', [MessageController::class, 'index']);
     Route::post('/messages', [MessageController::class, 'store']);
     Route::post('/surprises/{surpriseId}/messages', [MessageController::class, 'storeBySurprise']);
-    Route::get('/messages/file/{id}', [MessageController::class, 'download']);
+    //Route::get('/messages/file/{id}', [MessageController::class, 'download']);
+    Route::get('/messages/file/{id}', [MessageController::class, 'download'])->withoutMiddleware('auth:sanctum');
 
     /* -------------------------
      *  OFFERS
@@ -179,13 +180,29 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/surprises/{surpriseId}/offers', [OfferController::class, 'listBySurprise']);
     Route::post('/offers/{offerId}/counter', [OfferController::class, 'counterOffer']);
     Route::post('/offers/{offerId}/accept', [OfferController::class, 'accept']);
+ /* -------------------------
+     *  ADS
+     * ------------------------- */
+
+Route::get('/creator/ads/active', [SurpriseAdController::class, 'active']);
+Route::get('/creator/ads/available', [SurpriseAdController::class, 'available']);
+Route::get('/creator/ads/history', [SurpriseAdController::class, 'history']);
+Route::post('/creator/ads/reactivate/{id}', [SurpriseAdController::class, 'reactivate']);
+Route::post('/creator/ads/cancel/{id}', [SurpriseAdController::class, 'cancel']);
+Route::get('/creator/ads/stats', [SurpriseAdController::class, 'stats']);
+
+
+Route::get('/genius/{id}/dashboard', [GeniusController::class, 'dashboard']);
+
 
     /* -------------------------
      *  FILES
      * ------------------------- */
     Route::post('/surprises/{id}/files', [SurpriseFileController::class, 'store']);
     Route::get('/surprises/{id}/files', [SurpriseFileController::class, 'index']);
-    Route::get('/files/{id}/download', [SurpriseFileController::class, 'download']);
+    //Route::get('/files/{id}/download', [SurpriseFileController::class, 'download']);
+    Route::get('/files/{id}/download', [SurpriseFileController::class, 'download'])
+    ->withoutMiddleware('auth:sanctum');
 
     /* -------------------------
      *  NOTIFICATIONS

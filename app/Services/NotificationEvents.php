@@ -67,6 +67,29 @@ class NotificationEvents
             );
         }
     }
+    public static function userBanned(int $userId)
+{
+    $metadata = [
+        'user_id'   => $userId,
+        'banned_at' => now()->toDateTimeString(),
+    ];
+
+    Notify::warning(
+        $userId,
+        'Cuenta baneada',
+        'Tu cuenta ha sido baneada por el equipo de administración.',
+        $metadata
+    );
+}
+public static function userUnbanned(User $user)
+{
+    Notify::info(
+        $user->id,
+        'Cuenta restaurada',
+        'Tu cuenta ha sido desbaneada y puedes volver a usar la plataforma.',
+        ['user_id' => $user->id]
+    );
+}
 
     public static function surpriseCancelled(Surprise $surprise)
     {
@@ -79,7 +102,26 @@ class NotificationEvents
             );
         }
     }
+public static function surpriseForceCancelled(Surprise $surprise)
+{
+    // Notificar al creador
+    Notify::warning(
+        $surprise->creator_id,
+        'Sorpresa cancelada por administración',
+        'Un administrador ha cancelado esta sorpresa.',
+        ['surprise_id' => $surprise->id]
+    );
 
+    // Notificar al genio (si existe)
+    if ($surprise->genius_id) {
+        Notify::warning(
+            $surprise->genius_id,
+            'Sorpresa cancelada por administración',
+            'Un administrador ha cancelado esta sorpresa.',
+            ['surprise_id' => $surprise->id]
+        );
+    }
+}
     public static function deadlineUpdated(Surprise $surprise)
     {
         if (!$surprise->genius_id) return;
