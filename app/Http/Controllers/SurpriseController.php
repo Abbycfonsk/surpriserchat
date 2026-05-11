@@ -10,6 +10,13 @@ use App\Services\GeniusLevelService;
 use App\Services\NotificationEvents;
 use App\Services\AuditService;
 use App\Services\SanitizerService;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Encoders\WebpEncoder;
+use Illuminate\Support\Facades\Storage;
+
+
+
 
 class SurpriseController extends Controller
 {
@@ -44,196 +51,285 @@ class SurpriseController extends Controller
     }
 
     // Crear una sorpresa
-    public function store(Request $request)
+public function store(Request $request)
 {
-    $validated = $request->validate([
-        'creator_id' => 'required|exists:users,id',
-        'genius_id' => 'nullable|exists:users,id',
-        'title' => 'required|string',
-        'description' => 'nullable|string',
-        'status' => 'sometimes|string|in:open,in_progress,delivered,completed,cancelled',
-        'price' => 'nullable|numeric',
-        'deadline' => 'nullable|date',
-        'skill_id' => 'required|exists:skills,id',
-        'size' => 'required|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
-        'is_urgent' => 'nullable|boolean',
-        'highlight' => 'nullable|boolean' // ← ELECCIÓN DEL USUARIO
+    // ============================
+    // LOG DE DEPURACIÓN
+    // ============================
+    \Log::info('SURPRISE STORE REQUEST RECEIVED', [
+        'raw_body' => $request->all(),
+        'json' => json_decode($request->getContent(), true),
+        'user' => $request->user()?->id,
+        'headers' => $request->headers->all()
     ]);
 
-    $validated['title'] = SanitizerService::clean($validated['title']);
-    $validated['description'] = SanitizerService::clean($validated['description']);
+    try {
 
-    // Siempre empieza en open
-    $validated['status'] = 'open';
+    // ============================
+// VALIDACIÓN
+// ============================
+$validated = $request->validate([
+    'creator_id' => 'required|exists:users,id',
+    'genius_id' => 'nullable|exists:users,id',
+    'title' => 'required|string',
+    'description' => 'nullable|string',
+    'status' => 'sometimes|string|in:open,in_progress,delivered,completed,cancelled',
+    'price' => 'nullable|numeric',
+    'deadline' => 'nullable|date',
+    'skill_id' => 'required|exists:skills,id',
+    'size' => 'required|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
+    'is_urgent' => 'nullable|boolean',
+    'highlight' => 'nullable|boolean',
+    'header_image' => 'required|string'
+]);
 
-    if (!empty($validated['genius_id']) && $validated['creator_id'] == $validated['genius_id']) {
+// ============================
+// FIX: is_urgent no puede ser null en DB
+// ============================
+if (!isset($validated['is_urgent']) || $validated['is_urgent'] === null) {
+    $validated['is_urgent'] = false;
+}
+
+        // ============================
+        // SANITIZACIÓN
+        // ============================
+        $validated['title'] = SanitizerService::clean($validated['title']);
+        $validated['description'] = SanitizerService::clean($validated['description']);
+
+        // ============================
+        // IMAGEN DE CABECERA
+        // ============================
+        if ($request->hasFile('header_image')) {
+            $path = $request->file('header_image')->store('surprises/headers', 'public');
+            $validated['header_image'] = $path;
+        }
+
+        // ============================
+        // ESTADO INICIAL
+        // ============================
+        $validated['status'] = 'open';
+
+        // ============================
+        // CREATOR NO PUEDE SER GENIUS
+        // ============================
+        if (!empty($validated['genius_id']) && $validated['creator_id'] == $validated['genius_id']) {
+            return response()->json([
+                'error' => 'Creator and genius cannot be the same user'
+            ], 400);
+        }
+
+        // ============================
+        // CREAR SORPRESA
+        // ============================
+        $surprise = Surprise::create($validated);
+
+        AuditService::log(
+            'surprise_created',
+            'Surprise',
+            $surprise->id,
+            null,
+            $surprise->toArray()
+        );
+
+        NotificationEvents::surpriseCreated($surprise);
+
+        // ============================
+        // ¿QUIERE DESTACAR LA SORPRESA?
+        // ============================
+        if (isset($validated['highlight']) && $validated['highlight'] === true) {
+
+            \Log::info('SURPRISE HIGHLIGHT REQUEST', [
+                'surprise_id' => $surprise->id,
+                'creator_id' => $validated['creator_id']
+            ]);
+
+            $adRequest = new Request([
+                'surprise_id' => $surprise->id
+            ]);
+
+            $adResponse = app(\App\Http\Controllers\SurpriseAdController::class)->store($adRequest);
+
+            if ($adResponse->getStatusCode() !== 200) {
+
+                \Log::warning('HIGHLIGHT FAILED — DELETING SURPRISE', [
+                    'surprise_id' => $surprise->id,
+                    'ad_response' => $adResponse->getContent()
+                ]);
+
+                $surprise->delete();
+
+                return response()->json([
+                    'error' => 'You tried to highlight this surprise but you have no ads available'
+                ], 403);
+            }
+        }
+
+        // ============================
+        // RESPUESTA OK
+        // ============================
         return response()->json([
-            'error' => 'Creator and genius cannot be the same user'
-        ], 400);
-    }
-
-    // Crear sorpresa
-    $surprise = Surprise::create($validated);
-
-    AuditService::log(
-        'surprise_created',
-        'Surprise',
-        $surprise->id,
-        null,
-        $surprise->toArray()
-    );
-
-    // 🔔 Notificación: sorpresa creada
-    NotificationEvents::surpriseCreated($surprise);
-
-    /* ============================================================
-       OPCIÓN DEL USUARIO: ¿QUIERE DESTACAR LA SORPRESA?
-       ============================================================ */
-    if (!empty($validated['highlight']) && $validated['highlight'] == true) {
-
-        // Llamamos internamente al SurpriseAdController
-        $adRequest = new Request([
-            'surprise_id' => $surprise->id
+            'success' => true,
+            'message' => 'Surprise created successfully',
+            'data' => $surprise
         ]);
 
-        $adResponse = app(\App\Http\Controllers\SurpriseAdController::class)->store($adRequest);
+    } catch (\Throwable $e) {
 
-        // Si no tiene anuncios disponibles → revertimos la sorpresa
-        if ($adResponse->getStatusCode() !== 200) {
+        // ============================
+        // LOG DE ERROR REAL
+        // ============================
+        \Log::error('SURPRISE STORE ERROR', [
+            'message' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile(),
+            'trace' => $e->getTraceAsString()
+        ]);
 
-            $surprise->delete();
+        return response()->json([
+            'error' => 'Internal server error',
+            'details' => $e->getMessage()
+        ], 500);
+    }
+}
+public function update(Request $request, $id)
+{
+    \Log::info('ESTOY EN EL MÉTODO UPDATE');
+    $surprise = Surprise::findOrFail($id);
+    $user = $request->user();
 
-            return response()->json([
-                'error' => 'You tried to highlight this surprise but you have no ads available'
-            ], 403);
+    $isCreator = $user->id === $surprise->creator_id;
+    $isGenius = $user->id === $surprise->genius_id;
+
+    // El genio NO puede modificar
+    if ($isGenius) {
+        return response()->json(['error' => 'Genius cannot modify surprise details'], 403);
+    }
+
+    // No se puede modificar si está completada
+    if ($surprise->status === 'completed') {
+        return response()->json(['error' => 'Completed surprises cannot be modified'], 400);
+    }
+
+    // No se puede modificar si está entregada
+    if ($surprise->status === 'delivered') {
+        return response()->json(['error' => 'Delivered surprises cannot be modified'], 400);
+    }
+
+    // Solo el creador puede modificar
+    if (!$isCreator) {
+        return response()->json(['error' => 'Only the creator can modify the surprise'], 403);
+    }
+
+    // Validación según estado
+    $rules = [];
+
+    if ($surprise->status === 'open') {
+        $rules = [
+            'title' => 'nullable|string|max:200',
+            'description' => 'nullable|string',
+            'price' => 'nullable|numeric|min:1',
+            'deadline' => 'nullable|date',
+            'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
+            'is_urgent' => 'nullable|boolean',
+            'target_name' => 'nullable|string|max:100',
+            'target_city' => 'nullable|string|max:100',
+            'target_country' => 'nullable|string|max:100',
+            'target_lat' => 'nullable|numeric',
+            'target_lng' => 'nullable|numeric',
+
+            // AHORA PERMITIMOS 2 OPCIONES:
+            // 1) string → imagen de galería
+            // 2) file → imagen personalizada
+            'header_image' => 'nullable'
+        ];
+    }
+
+    if ($surprise->status === 'in_progress') {
+        $rules = [
+            'description' => 'nullable|string',
+            'deadline' => 'nullable|date|after_or_equal:today',
+            'header_image' => 'nullable'
+        ];
+    }
+
+    $validated = $request->validate($rules);
+
+    // No permitir cambiar estado ni genius
+    unset($validated['status'], $validated['genius_id']);
+
+    // Sanitización
+    foreach (['title', 'description', 'target_name', 'target_city', 'target_country'] as $field) {
+        if (isset($validated[$field])) {
+            $validated[$field] = SanitizerService::clean($validated[$field]);
         }
+    }
+
+    // Guardar valores previos
+    $old = $surprise->getOriginal();
+
+    // ============================
+    // PROCESAR HEADER IMAGE
+    // ============================
+
+    // 1) Si envían archivo → subir, comprimir y convertir a webp
+
+
+$manager = new ImageManager(new Driver());
+
+$img = $manager->read($request->file('header_image')->getRealPath());
+
+$img = $img->resize(1000, null, function ($constraint) {
+    $constraint->aspectRatio();
+    $constraint->upsize();
+});
+
+// Codificar a WebP
+$encoded = $img->encode(new WebpEncoder(quality: 80));
+
+// Convertir a binario REAL
+$binary = $encoded->toString();
+
+// Guardar
+$path = 'surprise_headers/' . uniqid() . '.webp';
+Storage::disk('public')->put($path, $binary);
+
+$validated['header_image'] = $path;
+
+
+    // 2) Si envían string → es una imagen de galería
+    if (isset($validated['header_image']) && is_string($validated['header_image'])) {
+        // Guardamos tal cual (ya viene como URL o path)
+        $validated['header_image'] = $validated['header_image'];
+    }
+
+    // 3) Si NO envían nada → mantener la que ya tenía
+    if (!isset($validated['header_image'])) {
+        $validated['header_image'] = $surprise->header_image;
+    }
+
+    // Actualizar sorpresa
+    $surprise->update($validated);
+
+    // Auditoría
+    AuditService::log(
+        'surprise_updated',
+        'Surprise',
+        $surprise->id,
+        $old,
+        $surprise->getChanges()
+    );
+
+    // Notificación si cambia deadline
+    if (isset($validated['deadline']) && $surprise->genius_id) {
+        NotificationEvents::deadlineUpdated($surprise);
     }
 
     return response()->json([
         'success' => true,
-        'message' => 'Surprise created successfully',
+        'message' => 'Surprise updated successfully',
         'data' => $surprise
     ]);
 }
-    // Actualizar una sorpresa
-    public function update(Request $request, $id)
-    {
-        $surprise = Surprise::findOrFail($id);
-        $user = $request->user();
-
-        $isCreator = $user->id === $surprise->creator_id;
-        $isGenius = $user->id === $surprise->genius_id;
-
-        // ❌ El genio NO puede modificar la sorpresa
-        if ($isGenius) {
-            return response()->json([
-                'error' => 'Genius cannot modify surprise details'
-            ], 403);
-        }
-
-        // ❌ Nadie puede modificar una sorpresa completada
-        if ($surprise->status === 'completed') {
-            return response()->json([
-                'error' => 'Completed surprises cannot be modified'
-            ], 400);
-        }
-
-        // ❌ Nadie puede modificar una sorpresa entregada
-        if ($surprise->status === 'delivered') {
-            return response()->json([
-                'error' => 'Delivered surprises cannot be modified'
-            ], 400);
-        }
-
-        // Solo el creador puede modificar
-        if (!$isCreator) {
-            return response()->json([
-                'error' => 'Only the creator can modify the surprise'
-            ], 403);
-        }
-
-        // VALIDACIÓN SEGÚN ESTADO
-        $rules = [];
-
-        if ($surprise->status === 'open') {
-            $rules = [
-                'title' => 'nullable|string|max:200',
-                'description' => 'nullable|string',
-                'price' => 'nullable|numeric|min:1',
-                'deadline' => 'nullable|date',
-                'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
-                'is_urgent' => 'nullable|boolean',
-                'target_name' => 'nullable|string|max:100',
-                'target_city' => 'nullable|string|max:100',
-                'target_country' => 'nullable|string|max:100',
-                'target_lat' => 'nullable|numeric',
-                'target_lng' => 'nullable|numeric'
-            ];
-        }
-
-        if ($surprise->status === 'in_progress') {
-            $rules = [
-                'description' => 'nullable|string',
-                'deadline' => 'nullable|date|after_or_equal:today'
-            ];
-        }
-
-        $validated = $request->validate($rules);
-
-        // ❌ Nunca permitir cambiar el estado manualmente
-        unset($validated['status']);
-
-        // ❌ Nunca permitir asignar genio manualmente
-        unset($validated['genius_id']);
-
-        // ⭐ SANITIZACIÓN SOLO DE TEXTO LIBRE
-        if (isset($validated['title'])) {
-            $validated['title'] = SanitizerService::clean($validated['title']);
-        }
-
-        if (isset($validated['description'])) {
-            $validated['description'] = SanitizerService::clean($validated['description']);
-        }
-
-        if (isset($validated['target_name'])) {
-            $validated['target_name'] = SanitizerService::clean($validated['target_name']);
-        }
-
-        if (isset($validated['target_city'])) {
-            $validated['target_city'] = SanitizerService::clean($validated['target_city']);
-        }
-
-        if (isset($validated['target_country'])) {
-            $validated['target_country'] = SanitizerService::clean($validated['target_country']);
-        }
-
-        // Guardamos valores previos para auditoría
-        $old = $surprise->getOriginal();
-
-        // Actualizar sorpresa
-        $surprise->update($validated);
-
-        // Auditoría
-        AuditService::log(
-            'surprise_updated',
-            'Surprise',
-            $surprise->id,
-            $old,
-            $surprise->getChanges()
-        );
-
-        // Notificación opcional si cambia el deadline
-        if (isset($validated['deadline']) && $surprise->genius_id) {
-            NotificationEvents::deadlineUpdated($surprise);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Surprise updated successfully',
-            'data' => $surprise
-        ]);
-    }
-
     public function start(Request $request, $id)
 {
     $surprise = Surprise::findOrFail($id);

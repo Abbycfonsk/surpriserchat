@@ -31,7 +31,44 @@ class NotificationController extends Controller
             'message' => 'Notification marked as read'
         ]);
     }
+public function sendAdsSummary()
+{
+    $geniuses = User::where('role', 'genius')->get();
 
+    foreach ($geniuses as $genius) {
+
+        $skills = $genius->skills->pluck('id')->toArray();
+
+        $ads = SurpriseAd::with('surprise')
+            ->where('is_active', 1)
+            ->whereNull('notified_at')
+            ->where('expires_at', '>', now())
+            ->get()
+            ->filter(function ($ad) use ($skills) {
+                return in_array($ad->surprise->skill_id, $skills);
+            });
+
+        if ($ads->isEmpty()) {
+            continue;
+        }
+
+        $premium = $ads->where('priority', 3)->count();
+        $normal = $ads->where('priority', '<', 3)->count();
+
+        if ($premium > 0) {
+            $msg = "Hay $premium sorpresas Premium y $normal destacadas nuevas que encajan contigo.";
+        } else {
+            $msg = "Hay $normal nuevas sorpresas destacadas que encajan contigo.";
+        }
+
+        NotificationEvents::adsSummary($genius, $msg);
+
+        foreach ($ads as $ad) {
+            $ad->notified_at = now();
+            $ad->save();
+        }
+    }
+}
     // Marcar todas como leídas
     public function markAllAsRead($userId)
     {

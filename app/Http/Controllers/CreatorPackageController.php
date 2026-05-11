@@ -15,7 +15,7 @@ class CreatorPackageController extends Controller
 
         $user = $request->user();
 
-        if ($user->role !== 'creator') {
+        if ($user->is_creator !== 1) {
             return response()->json([
                 'error' => 'Only creators can purchase packages'
             ], 403);
@@ -35,4 +35,40 @@ class CreatorPackageController extends Controller
             'data' => $package
         ]);
     }
+    public function current(Request $request)
+{
+    $user = $request->user();
+
+    $package = CreatorPackage::where('user_id', $user->id)
+        ->where('is_active', 1)
+        ->orderBy('id', 'desc')
+        ->first();
+
+    if (!$package) {
+        return response()->json([
+            'success' => true,
+            'message' => 'No active package',
+            'data' => null
+        ]);
+    }
+
+    return response()->json([
+        'success' => true,
+        'data' => $package
+    ]);
+}
+
+public function history(Request $request)
+{
+    $user = $request->user();
+
+    $packages = CreatorPackage::where('user_id', $user->id)
+        ->orderBy('id', 'desc')
+        ->get();
+
+    return response()->json([
+        'success' => true,
+        'data' => $packages
+    ]);
+}
 }

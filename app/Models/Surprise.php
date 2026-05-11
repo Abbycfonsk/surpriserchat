@@ -19,6 +19,7 @@ class Surprise extends Model
         'deadline',
         'size',
         'is_urgent',
+        'header_image',
         'target_name',
         'target_city',
         'target_country',

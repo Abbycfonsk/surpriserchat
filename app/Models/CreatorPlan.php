@@ -86,6 +86,15 @@ class CreatorPlan extends Model
             default => 15,
         };
     }
+public function earlyAccessHours(): int
+{
+    return match ($this->plan_type) {
+        'starter' => 1,
+        'pro' => 2,
+        'premium' => 3,
+        default => 0,
+    };
+}
 
     public function adPriority(): int
     {

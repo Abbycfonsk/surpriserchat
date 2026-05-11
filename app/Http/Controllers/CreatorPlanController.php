@@ -18,7 +18,7 @@ class CreatorPlanController extends Controller
         $user = $request->user();
 
         // 1) Verificar que el usuario es creador
-        if ($user->role !== 'creator') {
+        if ($user->is_creator !== 1) {
             return response()->json([
                 'error' => 'Only creators can purchase plans'
             ], 403);

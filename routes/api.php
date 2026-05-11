@@ -24,6 +24,8 @@ use App\Http\Controllers\GeniusController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SurpriseFileController;
 use App\Http\Controllers\UserSkillController;
+use App\Http\Controllers\CreatorPlanController;
+use App\Http\Controllers\CreatorPackageController;
 
 // Ruta de prueba
 Route::get('/ping', function () {
@@ -190,10 +192,13 @@ Route::get('/creator/ads/history', [SurpriseAdController::class, 'history']);
 Route::post('/creator/ads/reactivate/{id}', [SurpriseAdController::class, 'reactivate']);
 Route::post('/creator/ads/cancel/{id}', [SurpriseAdController::class, 'cancel']);
 Route::get('/creator/ads/stats', [SurpriseAdController::class, 'stats']);
-
-
+Route::post('/creator/plan/purchase', [CreatorPlanController::class, 'purchase']);
+Route::get('/creator/plan/current', [CreatorPlanController::class, 'current']);
 Route::get('/genius/{id}/dashboard', [GeniusController::class, 'dashboard']);
-
+Route::get('/genius/feed', [GeniusController::class, 'feed']);
+Route::post('/creator/package/purchase', [CreatorPackageController::class, 'purchase']);
+Route::get('/creator/package/current', [CreatorPackageController::class, 'current']);
+Route::get('/creator/package/history', [CreatorPackageController::class, 'history']);
 
     /* -------------------------
      *  FILES

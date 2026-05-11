@@ -26,6 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ]);
     })
+   
+   
+    
     ->withExceptions(function (Exceptions $exceptions): void {
 
         // ⭐ MANEJO PERSONALIZADO DE ARCHIVOS DEMASIADO GRANDES
@@ -51,4 +54,14 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
     })
+      ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule) {
+
+        // ⭐ CRON CADA 3 HORAS
+        $schedule->call(function () {
+            app(\App\Http\Controllers\NotificationController::class)->sendAdsSummary();
+        })->everyThreeHours();
+
+    })
     ->create();
+  
+  

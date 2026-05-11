@@ -7,78 +7,89 @@ use App\Models\Surprise;
 use App\Models\SurpriseAd;
 use App\Models\CreatorPlan;
 use App\Models\CreatorPackage;
+use Illuminate\Support\Facades\DB;
 
 class SurpriseAdController extends Controller
 {
     public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'surprise_id' => 'required|exists:surprises,id',
-        ]);
+{
+    $validated = $request->validate([
+        'surprise_id' => 'required|exists:surprises,id',
+    ]);
 
-        $surprise = Surprise::findOrFail($validated['surprise_id']);
-        $creator = $surprise->creator;
+    $surprise = Surprise::findOrFail($validated['surprise_id']);
+    $creator = $surprise->creator;
 
-        // 1) Buscar plan activo
-        $plan = CreatorPlan::where('user_id', $creator->id)
-            ->where('is_active', 1)
-            ->where('starts_at', '<=', now())
-            ->where('ends_at', '>=', now())
-            ->first();
+    // Evitar doble activación accidental
+    if ($surprise->ads()->where('is_active', 1)->exists()) {
+        return response()->json([
+            'error' => 'This surprise already has an active ad'
+        ], 400);
+    }
 
-        // 2) Buscar paquete activo
-        $package = CreatorPackage::where('user_id', $creator->id)
-            ->where('is_active', 1)
-            ->first();
+    // Buscar plan activo
+    $plan = CreatorPlan::where('user_id', $creator->id)
+        ->where('is_active', 1)
+        ->where('starts_at', '<=', now())
+        ->where('ends_at', '>=', now())
+        ->first();
 
-        $adType = null;
-        $priority = null;
-        $days = null;
+    // Buscar paquete activo
+    $package = CreatorPackage::where('user_id', $creator->id)
+        ->where('is_active', 1)
+        ->first();
 
-        // 3) Si tiene plan con anuncios disponibles → usar plan
-        if ($plan && $plan->remainingAds() > 0) {
+    $adType = null;
+    $priority = null;
+    $days = null;
+    $earlyAccess = $plan ? $plan->earlyAccessHours() : 0;
 
-            $days = $plan->adDurationDays();
-            $priority = $plan->adPriority();
-            $adType = $plan->plan_type;
+    // Determinar fuente del anuncio (plan o paquete)
+    if ($plan && $plan->remainingAds() > 0) {
+        $days = $plan->adDurationDays();
+        $priority = $plan->adPriority();
+        $adType = $plan->plan_type;
+    }
+    elseif ($package && $package->remainingAds() > 0) {
+        $days = 30;
+        $priority = 1;
+        $adType = 'package';
+    }
+    else {
+        return response()->json([
+            'error' => 'You have no ads available'
+        ], 403);
+    }
 
-            $plan->consumeAd();
-        }
+    // Transacción para evitar inconsistencias
+    return DB::transaction(function () use ($surprise, $creator, $adType, $priority, $earlyAccess, $days, $plan, $package) {
 
-        // 4) Si no tiene plan pero tiene paquete → usar paquete
-        elseif ($package && $package->remainingAds() > 0) {
-
-            $days = 30;
-            $priority = 1;
-            $adType = 'package';
-
-            $package->consumeAd();
-        }
-
-        // 5) Si no tiene nada → error
-        else {
-            return response()->json([
-                'error' => 'You have no ads available'
-            ], 403);
-        }
-
-        // 6) Crear anuncio
+        // Crear anuncio primero
         $ad = SurpriseAd::create([
             'surprise_id' => $surprise->id,
             'creator_id' => $creator->id,
             'ad_type' => $adType,
             'priority' => $priority,
+            'early_access_hours' => $earlyAccess,
             'activated_at' => now(),
             'expires_at' => now()->addDays($days),
             'is_active' => 1
         ]);
+
+        // Consumir anuncio DESPUÉS de crear el ad
+        if ($adType !== 'package') {
+            $plan->consumeAd();
+        } else {
+            $package->consumeAd();
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Ad activated successfully',
             'data' => $ad
         ]);
-    }
+    });
+}
     public function active(Request $request)
 {
     $user = $request->user();

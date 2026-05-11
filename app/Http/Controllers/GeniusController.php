@@ -39,6 +39,69 @@ class GeniusController extends Controller
         'data' => $surprises
     ]);
 }
+public function feed(Request $request)
+{
+    $genius = $request->user();
+
+    // Skills del genio
+    $skills = $genius->skills->pluck('id')->toArray();
+    $now = now();
+
+    // Obtener sorpresas con ads activos
+    $surprises = Surprise::with([
+        'ads' => function ($q) {
+            $q->where('is_active', 1)
+              ->orderBy('priority', 'desc'); // el ad más importante primero
+        }
+    ])
+    ->where('status', 'open')
+    ->whereIn('skill_id', $skills)
+    ->get()
+    ->filter(function ($s) use ($now) {
+
+        // Si no tiene ads → sorpresa normal → visible
+        if ($s->ads->isEmpty()) {
+            return true;
+        }
+
+        // Tomar el ad activo con mayor prioridad
+        $ad = $s->ads->first();
+
+        // Si expiró → no mostrar
+        if ($ad->expires_at->isPast()) {
+            return false;
+        }
+
+        // Early access
+        $early = $ad->early_access_hours ?? 0;
+
+        if ($early > 0) {
+            $visibleAt = $ad->activated_at->copy()->addHours($early);
+
+            // Si aún no es visible → ocultar
+            if ($now->lt($visibleAt)) {
+                return false;
+            }
+        }
+
+        return true;
+    })
+    ->sortByDesc(function ($s) {
+        $ad = $s->ads->first();
+
+        return [
+            $s->is_urgent ? 1 : 0,          // urgentes primero
+            $ad->priority ?? 0,             // prioridad del plan
+            $s->created_at->timestamp       // más recientes después
+        ];
+    })
+    ->values();
+
+    return response()->json([
+        'success' => true,
+        'data' => $surprises
+    ]);
+}
     public function suggest($skillId)
     {
         // 1. Genius que tienen esta skill

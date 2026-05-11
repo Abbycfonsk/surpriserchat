@@ -13,6 +13,7 @@ class SurpriseAd extends Model
         'creator_id',
         'ad_type',
         'priority',
+        'early_access_hours',
         'activated_at',
         'expires_at',
         'is_active',
