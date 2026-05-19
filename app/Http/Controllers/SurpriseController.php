@@ -14,6 +14,7 @@ use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\WebpEncoder;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 
 
@@ -30,7 +31,7 @@ class SurpriseController extends Controller
     // Listar todas las sorpresas
     public function index()
     {
-        $surprises = Surprise::with(['creator', 'genius', 'files', 'reviews'])->get();
+        $surprises = Surprise::with(['creator', 'genius', 'files', 'review'])->get();
 
         return response()->json([
             'success' => true,
@@ -41,7 +42,7 @@ class SurpriseController extends Controller
     // Ver una sorpresa por ID
     public function show($id)
     {
-        $surprise = Surprise::with(['creator', 'genius', 'files', 'reviews'])
+        $surprise = Surprise::with(['creator', 'genius', 'files', 'review'])
             ->findOrFail($id);
 
         return response()->json([
@@ -80,8 +81,9 @@ $validated = $request->validate([
     'size' => 'required|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
     'is_urgent' => 'nullable|boolean',
     'highlight' => 'nullable|boolean',
-    'header_image' => 'required|string'
+    'header_image' => 'required'
 ]);
+
 
 // ============================
 // FIX: is_urgent no puede ser null en DB
@@ -99,10 +101,12 @@ if (!isset($validated['is_urgent']) || $validated['is_urgent'] === null) {
         // ============================
         // IMAGEN DE CABECERA
         // ============================
-        if ($request->hasFile('header_image')) {
-            $path = $request->file('header_image')->store('surprises/headers', 'public');
-            $validated['header_image'] = $path;
-        }
+      if ($request->hasFile('header_image')) {
+    $path = $request->file('header_image')->store('surprises/headers', 'public');
+    $validated['header_image'] = $path;
+} else {
+    $validated['header_image'] = $request->input('header_image');
+}
 
         // ============================
         // ESTADO INICIAL
@@ -237,9 +241,7 @@ public function update(Request $request, $id)
             'target_lat' => 'nullable|numeric',
             'target_lng' => 'nullable|numeric',
 
-            // AHORA PERMITIMOS 2 OPCIONES:
-            // 1) string → imagen de galería
-            // 2) file → imagen personalizada
+            // Puede ser string (galería) o file (personalizada)
             'header_image' => 'nullable'
         ];
     }
@@ -271,34 +273,41 @@ public function update(Request $request, $id)
     // PROCESAR HEADER IMAGE
     // ============================
 
+    \Log::info('FILES RECIBIDOS', $request->allFiles());
+
     // 1) Si envían archivo → subir, comprimir y convertir a webp
+    if ($request->hasFile('header_image')) {
 
+        \Log::info('ENTRANDO A PROCESAR HEADER IMAGE');
 
-$manager = new ImageManager(new Driver());
+        $manager = new ImageManager(new Driver());
 
-$img = $manager->read($request->file('header_image')->getRealPath());
+        $img = $manager->read($request->file('header_image')->getRealPath());
 
-$img = $img->resize(1000, null, function ($constraint) {
-    $constraint->aspectRatio();
-    $constraint->upsize();
-});
+       $img = $img->scale(width: 1000);
 
-// Codificar a WebP
-$encoded = $img->encode(new WebpEncoder(quality: 80));
+        // Codificar a WebP
+        $encoded = $img->encode(new WebpEncoder(quality: 80));
 
-// Convertir a binario REAL
-$binary = $encoded->toString();
+        // Convertir a binario REAL
+        $binary = $encoded->toString();
 
-// Guardar
-$path = 'surprise_headers/' . uniqid() . '.webp';
-Storage::disk('public')->put($path, $binary);
+        // Guardar
+        $path = 'surprise_headers/' . uniqid() . '.webp';
+        $ok = Storage::disk('public')->put($path, $binary);
 
-$validated['header_image'] = $path;
+        \Log::info('RESULTADO GUARDADO HEADER', [
+            'ok' => $ok,
+            'path' => $path
+        ]);
 
+        if ($ok) {
+            $validated['header_image'] = $path;
+        }
+    }
 
     // 2) Si envían string → es una imagen de galería
     if (isset($validated['header_image']) && is_string($validated['header_image'])) {
-        // Guardamos tal cual (ya viene como URL o path)
         $validated['header_image'] = $validated['header_image'];
     }
 
@@ -635,16 +644,17 @@ $validated['header_image'] = $path;
 
     // Listar sorpresas creadas por un usuario
     public function byCreator($userId)
-    {
-        $surprises = Surprise::where('creator_id', $userId)
-            ->with(['files', 'reviews'])
-            ->get();
+{
+    $surprises = Surprise::where('creator_id', $userId)
+        ->with(['files', 'review', 'skill'])
+        ->withExists('ads')
+        ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => $surprises
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'data' => $surprises
+    ]);
+}
 
     // Listar sorpresas donde el usuario es genius
     public function byGenius($userId)

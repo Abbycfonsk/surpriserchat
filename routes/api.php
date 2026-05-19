@@ -27,6 +27,11 @@ use App\Http\Controllers\UserSkillController;
 use App\Http\Controllers\CreatorPlanController;
 use App\Http\Controllers\CreatorPackageController;
 
+Route::options('/{any}', function () {
+    return response()->json([], 200);
+})->where('any', '.*');
+
+
 // Ruta de prueba
 Route::get('/ping', function () {
     return response()->json(['message' => 'pong']);
@@ -94,6 +99,7 @@ Route::post('/dev/get-reset-token', function (Request $request) {
 /* ============================================================
  *  PUBLIC ROUTES (sin autenticación)
  * ============================================================ */
+
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:3,1');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');

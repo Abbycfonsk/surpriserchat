@@ -9,6 +9,7 @@ use App\Models\UserSkill;
 use App\Services\AuditService;
 use App\Services\SanitizerService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -143,17 +144,16 @@ class UserController extends Controller
     $old = $user->getOriginal();
 
     // Subida de avatar
-    if ($request->hasFile('avatar')) {
-
-        // Borrar avatar anterior si estaba en storage
-        if ($user->avatar && str_starts_with($user->avatar, '/storage/')) {
-            $oldPath = str_replace('/storage/', '', $user->avatar);
-            Storage::disk('public')->delete($oldPath);
-        }
-
-        $path = $request->file('avatar')->store('avatars', 'public');
-        $validated['avatar'] = '/storage/' . $path;
+   if ($request->hasFile('avatar')) {
+    if ($user->avatar) {
+        $oldPath = str_replace('/storage/', '', $user->avatar);
+        Storage::disk('public')->delete($oldPath);
     }
+
+    $path = $request->file('avatar')->store('avatars', 'public');
+    $validated['avatar'] = $path;
+}
+    
 
     // Actualizar usuario
     $user->update($validated);

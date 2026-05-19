@@ -6,7 +6,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://surpriser.app'],
+    'allowed_origins' => [
+        'https://surpriser.app',
+        'https://www.surpriser.app',
+        'https://web.surpriser.app',
+    ],
 
     'allowed_origins_patterns' => [],
 
@@ -16,6 +20,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => true,
+    'supports_credentials' => false,
 
 ];
