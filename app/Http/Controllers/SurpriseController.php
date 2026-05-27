@@ -31,7 +31,7 @@ class SurpriseController extends Controller
     // Listar todas las sorpresas
     public function index()
     {
-        $surprises = Surprise::with(['creator', 'genius', 'files', 'review'])->get();
+        $surprises = Surprise::with(['creator', 'genius', 'files', 'review', 'offers'])->get();
 
         return response()->json([
             'success' => true,
@@ -646,7 +646,7 @@ public function update(Request $request, $id)
     public function byCreator($userId)
 {
     $surprises = Surprise::where('creator_id', $userId)
-        ->with(['files', 'review', 'skill'])
+        ->with(['files', 'review', 'skill', 'offers'])
         ->withExists('ads')
         ->get();
 
@@ -660,7 +660,7 @@ public function update(Request $request, $id)
     public function byGenius($userId)
     {
         $surprises = Surprise::where('genius_id', $userId)
-            ->with(['files', 'reviews'])
+            ->with(['files', 'review', 'skill'])
             ->get();
 
         return response()->json([

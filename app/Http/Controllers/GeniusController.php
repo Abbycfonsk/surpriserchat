@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\UserSkill;
 use App\Models\Review;
 use App\Models\Surprise;
+use Illuminate\Http\Request;
 
 class GeniusController extends Controller
 {

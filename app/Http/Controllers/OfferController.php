@@ -146,6 +146,18 @@ class OfferController extends Controller
             'data' => $offers
         ]);
     }
+    public function myOffers(Request $request)
+{
+    $offers = Offer::where('genius_id', $request->user()->id)
+        ->with(['surprise.skill', 'surprise.creator', 'bids'])
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+    return response()->json([
+        'success' => true,
+        'data' => $offers
+    ]);
+}
 
     // Regateo: creador o genius envían contraoferta
     public function counterOffer(Request $request, $offerId)
