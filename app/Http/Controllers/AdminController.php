@@ -93,24 +93,25 @@ class AdminController extends Controller
     }
 
     public function resolveDispute(Request $request, $id)
-    {
-        $admin = $request->user();
+{
+    $admin = $request->user();
 
-        if (!$admin->is_admin) {
-            return response()->json(['error' => 'Not authorized'], 403);
-        }
+    if (!$admin->is_admin) {
+        return response()->json(['error' => 'Not authorized'], 403);
+    }
 
-        $dispute = \App\Models\Dispute::with(['surprise', 'creator', 'genius'])->findOrFail($id);
+    $dispute = Dispute::with(['surprise', 'creator', 'genius'])->findOrFail($id);
 
-        if ($dispute->status !== 'open') {
-            return response()->json(['error' => 'Dispute already resolved'], 400);
-        }
+    if ($dispute->status !== 'open') {
+        return response()->json(['error' => 'Dispute already resolved'], 400);
+    }
 
-        $request->validate([
-            'winner' => 'required|in:creator,genius,none',
-            'resolution' => 'required|string|max:1000'
-        ]);
+    $request->validate([
+        'winner' => 'required|in:creator,genius,none',
+        'resolution' => 'required|string|max:1000'
+    ]);
 
+    DB::transaction(function () use ($request, $dispute) {
         // Actualizar disputa
         $dispute->winner = $request->winner;
         $dispute->resolution = $request->resolution;
@@ -118,32 +119,61 @@ class AdminController extends Controller
         $dispute->resolved_at = now();
         $dispute->save();
 
-        // Penalización automática si pierde el genio
-        if ($dispute->winner === 'creator') {
-            \App\Services\DisputePenaltyService::applyPenalty($dispute);
+        // Devolver la sorpresa a completed tras resolver disputa
+        $surprise = $dispute->surprise;
+
+        if ($surprise) {
+            $oldStatus = $surprise->status;
+            $completedAt = $surprise->completed_at ?: now();
+
+            $surprise->status = 'completed';
+            $surprise->completed_at = $completedAt;
+            $surprise->save();
+
+            \App\Services\AuditService::log(
+                'surprise_completed_after_dispute',
+                'Surprise',
+                $surprise->id,
+                [
+                    'status' => $oldStatus,
+                    'completed_at' => $surprise->getOriginal('completed_at'),
+                ],
+                [
+                    'status' => 'completed',
+                    'completed_at' => $completedAt,
+                ]
+            );
         }
+    });
 
-        // Auditoría
-        \App\Services\AuditService::log(
-            'dispute_resolved',
-            'Dispute',
-            $dispute->id,
-            ['status' => 'open'],
-            [
-                'status' => 'resolved',
-                'winner' => $dispute->winner
-            ]
-        );
+    $dispute->refresh();
 
-        // Notificación
-        NotificationEvents::disputeResolved($dispute);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Dispute resolved successfully',
-            'data' => $dispute
-        ]);
+    // Penalización automática si pierde el genio
+    if ($dispute->winner === 'creator') {
+        \App\Services\DisputePenaltyService::applyPenalty($dispute);
     }
+
+    // Auditoría de disputa
+    \App\Services\AuditService::log(
+        'dispute_resolved',
+        'Dispute',
+        $dispute->id,
+        ['status' => 'open'],
+        [
+            'status' => 'resolved',
+            'winner' => $dispute->winner
+        ]
+    );
+
+    // Notificación
+    NotificationEvents::disputeResolved($dispute);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Dispute resolved successfully',
+        'data' => $dispute->load(['surprise', 'creator', 'genius'])
+    ]);
+}
     // ============================
     //  USUARIOS
     // ============================

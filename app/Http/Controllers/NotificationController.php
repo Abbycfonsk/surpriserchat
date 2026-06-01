@@ -18,6 +18,17 @@ class NotificationController extends Controller
             'data' => $notifications
         ]);
     }
+    public function unreadCount($id)
+{
+    $count = Notification::where('user_id', $id)
+        ->where('read_flag', false)
+        ->count();
+
+    return response()->json([
+        'success' => true,
+        'count' => $count
+    ]);
+}
 
     // Marcar una notificación como leída
     public function markAsRead($id)

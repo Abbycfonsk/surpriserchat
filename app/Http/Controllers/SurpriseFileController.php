@@ -76,6 +76,35 @@ class SurpriseFileController extends Controller
         ]
     );
 }
+public function destroy(Request $request, $id)
+{
+    $file = SurpriseFile::with('surprise')->findOrFail($id);
+    $surprise = $file->surprise;
+    $user = $request->user();
+
+    if ($user->id !== $surprise->creator_id && $user->id !== $surprise->genius_id) {
+        return response()->json(['error' => 'No autorizado'], 403);
+    }
+
+    if ($file->path && Storage::disk('public')->exists($file->path)) {
+        Storage::disk('public')->delete($file->path);
+    }
+
+    AuditService::log(
+        'file_deleted',
+        'SurpriseFile',
+        $file->id,
+        $file->toArray(),
+        null
+    );
+
+    $file->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Archivo eliminado correctamente'
+    ]);
+}
     public function store(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);
@@ -87,9 +116,9 @@ class SurpriseFileController extends Controller
         }
 
         // 2. Validación de estado
-        if (!in_array($surprise->status, ['in_progress', 'delivered'])) {
-            return response()->json(['error' => 'No se pueden subir archivos en este estado'], 400);
-        }
+       if (!in_array($surprise->status, ['open', 'in_progress', 'delivered'])) {
+    return response()->json(['error' => 'No se pueden subir archivos en este estado'], 400);
+}
 
         // 3. Validación básica
         $request->validate([

@@ -29,27 +29,103 @@ class SurpriseController extends Controller
     }
 
     // Listar todas las sorpresas
-    public function index()
-    {
-        $surprises = Surprise::with(['creator', 'genius', 'files', 'review', 'offers'])->get();
+public function index()
+{
+    $surprises = Surprise::with([
+        'creator',
+        'genius',
+        'files',
+        'review',
+        'offers'
+    ])
+    ->withCount('ads')
+    ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => $surprises
-        ]);
+    return response()->json([
+        'success' => true,
+        'data' => $surprises
+    ]);
+}
+public function feed(Request $request)
+{
+    $query = Surprise::query()
+        ->where('status', 'open')
+        ->select([
+            'id',
+            'title',
+            'status',
+            'deadline',
+            'size',
+            'skill_id',
+            'is_urgent',
+            'header_image'
+        ])
+        ->withCount('ads')
+        ->with('skill:id,name');
+
+    if ($request->filled('skill_id')) {
+        $query->where('skill_id', $request->skill_id);
     }
 
+    if ($request->filled('is_urgent')) {
+        $query->where('is_urgent', 1);
+    }
+
+    if ($request->filled('featured') && $request->featured == 1) {
+        $query->whereHas('ads');
+    }
+
+    if ($request->filled('size')) {
+        $query->where('size', $request->size);
+    }
+
+    // 1. Destacadas primero
+    $query->orderByDesc('ads_count');
+
+    // 2. Urgentes después
+    $query->orderByDesc('is_urgent');
+
+    // 3. Orden por deadline
+    if ($request->filled('order_deadline')) {
+        $query->orderBy('deadline', $request->order_deadline);
+    } else {
+        $query->orderBy('deadline', 'asc');
+    }
+
+    // 4. Orden por tamaño si lo usas
+    if ($request->filled('order_size')) {
+        $query->orderByRaw("
+            CASE size
+                WHEN 'SMALL' THEN 1
+                WHEN 'MEDIUM' THEN 2
+                WHEN 'LARGE' THEN 3
+                WHEN 'PREMIUM' THEN 4
+                ELSE 99
+            END " . ($request->order_size === 'desc' ? 'DESC' : 'ASC')
+        );
+    }
+
+    return response()->json([
+        'success' => true,
+        'data' => $query->get()
+    ]);
+}
     // Ver una sorpresa por ID
-    public function show($id)
-    {
-        $surprise = Surprise::with(['creator', 'genius', 'files', 'review'])
-            ->findOrFail($id);
+   public function show($id)
+{
+    $surprise = Surprise::with([
+        'creator',
+        'skill:id,name',
+        'files'
+    ])
+    ->withCount('ads')
+    ->findOrFail($id);
 
-        return response()->json([
-            'success' => true,
-            'data' => $surprise
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'data' => $surprise
+    ]);
+}
 
     // Crear una sorpresa
 public function store(Request $request)
@@ -444,42 +520,53 @@ public function update(Request $request, $id)
 }
     // Creador completa la sorpresa
     public function complete(Request $request, $id)
-    {
-        $surprise = Surprise::with('genius')->findOrFail($id);
-        $user = $request->user();
+{
+    $surprise = Surprise::with('genius')->findOrFail($id);
+    $user = $request->user();
 
-        // Solo el creador puede completar
-        if ($user->id !== $surprise->creator_id) {
-            return response()->json(['error' => 'Only the creator can complete the surprise'], 403);
-        }
-
-        // Validación de estado
-        if ($surprise->status !== 'delivered') {
-            return response()->json(['error' => 'Only delivered surprises can be completed'], 400);
-        }
-
-        $surprise->update([
-            'status' => 'completed',
-            'completed_at' => now(),
-        ]);
-        AuditService::log(
-            'surprise_completed',
-            'Surprise',
-            $surprise->id,
-            ['status' => 'delivered'],
-            ['status' => 'completed']
-        );
-        // Activar skill + XP
-        $this->activateSkill($surprise);
-        $this->addExperience($surprise);
-
-        NotificationEvents::surpriseCompleted($surprise);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Surprise completed and skills updated'
-        ]);
+    // Solo el creador puede completar
+    if ($user->id !== $surprise->creator_id) {
+        return response()->json(['error' => 'Only the creator can complete the surprise'], 403);
     }
+
+    // Solo se puede completar una sorpresa entregada
+    if ($surprise->status !== 'delivered') {
+        return response()->json(['error' => 'Only delivered surprises can be completed'], 400);
+    }
+
+    $completedAt = now();
+
+    $surprise->update([
+        'status' => 'completed',
+        'completed_at' => $completedAt,
+    ]);
+
+    AuditService::log(
+        'surprise_completed',
+        'Surprise',
+        $surprise->id,
+        [
+            'status' => 'delivered',
+            'completed_at' => null,
+        ],
+        [
+            'status' => 'completed',
+            'completed_at' => $completedAt,
+        ]
+    );
+
+    // Activar skill + XP
+    $this->activateSkill($surprise);
+    $this->addExperience($surprise);
+
+    NotificationEvents::surpriseCompleted($surprise);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Surprise completed and skills updated',
+        'data' => $surprise->fresh()
+    ]);
+}
     public function cancel(Request $request, $id)
     {
         $surprise = Surprise::findOrFail($id);

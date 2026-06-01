@@ -146,6 +146,7 @@ Route::middleware('auth:sanctum')->group(function () {
     /* -------------------------
      *  SURPRISES
      * ------------------------- */
+    Route::get('/surprises/feed', [SurpriseController::class, 'feed']);
     Route::post('/surprises', [SurpriseController::class, 'store']);
     Route::put('/surprises/{id}', [SurpriseController::class, 'update']);
     Route::get('/surprises', [SurpriseController::class, 'index']);
@@ -215,6 +216,7 @@ Route::get('/creator/package/history', [CreatorPackageController::class, 'histor
     //Route::get('/files/{id}/download', [SurpriseFileController::class, 'download']);
     Route::get('/files/{id}/download', [SurpriseFileController::class, 'download'])
     ->withoutMiddleware('auth:sanctum');
+    Route::delete('/files/{id}', [SurpriseFileController::class, 'destroy']);
 
     /* -------------------------
      *  NOTIFICATIONS
@@ -222,7 +224,7 @@ Route::get('/creator/package/history', [CreatorPackageController::class, 'histor
     Route::get('/users/{id}/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-
+    Route::get('/users/{id}/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     /* -------------------------
      *  REVIEWS
      * ------------------------- */
