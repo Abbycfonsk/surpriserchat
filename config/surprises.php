@@ -2,9 +2,9 @@
 
 return [
     'price_ranges' => [
-        'SMALL' => ['min' => 5,   'max' => 100],
-        'MEDIUM' => ['min' => 20,  'max' => 300],
-        'LARGE' => ['min' => 50,  'max' => 600],
-        'PREMIUM' => ['min' => 100, 'max' => 2000],
+        'SMALL'   => ['min' => 10,  'max' => 50],    // Económica
+        'MEDIUM'  => ['min' => 50,  'max' => 150],   // Estándar
+        'LARGE'   => ['min' => 150, 'max' => 500],   // Superior
+        'PREMIUM' => ['min' => 500, 'max' => 2000],  // Premium
     ],
 ];

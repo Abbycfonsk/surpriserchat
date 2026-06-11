@@ -58,10 +58,19 @@ public function feed(Request $request)
             'size',
             'skill_id',
             'is_urgent',
-            'header_image'
+            'header_image',
+            'creator_id',
+
+            // ubicación
+            'target_city',
+            'target_country',
+            'target_province',
         ])
         ->withCount('ads')
-        ->with('skill:id,name');
+        ->with([
+            'skill:id,name',
+            'creator:id,avatar'
+        ]);
 
     if ($request->filled('skill_id')) {
         $query->where('skill_id', $request->skill_id);
@@ -79,20 +88,20 @@ public function feed(Request $request)
         $query->where('size', $request->size);
     }
 
-    // 1. Destacadas primero
-    $query->orderByDesc('ads_count');
+    if ($request->filled('province')) {
+        $query->where('target_province', 'LIKE', '%' . $request->province . '%');
+    }
 
-    // 2. Urgentes después
+    // orden
+    $query->orderByDesc('ads_count');
     $query->orderByDesc('is_urgent');
 
-    // 3. Orden por deadline
     if ($request->filled('order_deadline')) {
         $query->orderBy('deadline', $request->order_deadline);
     } else {
         $query->orderBy('deadline', 'asc');
     }
 
-    // 4. Orden por tamaño si lo usas
     if ($request->filled('order_size')) {
         $query->orderByRaw("
             CASE size
@@ -105,9 +114,32 @@ public function feed(Request $request)
         );
     }
 
+    $surprises = $query->get()->map(function ($surprise) {
+
+        $xp = 10; // base XP
+
+        // tamaño
+        if ($surprise->size === 'MEDIUM') $xp += 10;
+        if ($surprise->size === 'LARGE') $xp += 20;
+        if ($surprise->size === 'PREMIUM') $xp += 40;
+
+        // urgencia
+        if ($surprise->is_urgent) $xp += 15;
+
+        // ads (valor añadido de marketplace)
+        if ($surprise->ads_count > 0) $xp += 10;
+
+        // opcional: bonus si está destacada
+        if ($surprise->ads_count > 0) $xp += 5;
+
+        $surprise->xp_value = $xp;
+
+        return $surprise;
+    });
+
     return response()->json([
         'success' => true,
-        'data' => $query->get()
+        'data' => $surprises
     ]);
 }
     // Ver una sorpresa por ID
@@ -730,12 +762,34 @@ public function update(Request $request, $id)
 }*/
 
     // Listar sorpresas creadas por un usuario
-    public function byCreator($userId)
+public function byCreator($userId)
 {
     $surprises = Surprise::where('creator_id', $userId)
         ->with(['files', 'review', 'skill', 'offers'])
-        ->withExists('ads')
-        ->get();
+        ->withCount('ads')
+        ->get()
+        ->map(function ($surprise) {
+
+            $xp = 10; // base XP
+
+            // tamaño
+            if ($surprise->size === 'MEDIUM') $xp += 10;
+            if ($surprise->size === 'LARGE') $xp += 20;
+            if ($surprise->size === 'PREMIUM') $xp += 40;
+
+            // urgencia
+            if ($surprise->is_urgent) $xp += 15;
+
+            // ads (bonus marketplace)
+            if ($surprise->ads_count > 0) $xp += 10;
+
+            // bonus adicional por estar destacada (evita duplicado si quieres ajustarlo luego)
+            if ($surprise->ads_count > 0) $xp += 5;
+
+            $surprise->xp_value = $xp;
+
+            return $surprise;
+        });
 
     return response()->json([
         'success' => true,
