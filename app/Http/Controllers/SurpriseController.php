@@ -49,28 +49,26 @@ public function index()
 public function feed(Request $request)
 {
     $query = Surprise::query()
-        ->where('status', 'open')
-        ->select([
-            'id',
-            'title',
-            'status',
-            'deadline',
-            'size',
-            'skill_id',
-            'is_urgent',
-            'header_image',
-            'creator_id',
-
-            // ubicación
-            'target_city',
-            'target_country',
-            'target_province',
-        ])
-        ->withCount('ads')
-        ->with([
-            'skill:id,name',
-            'creator:id,avatar'
-        ]);
+    ->where('status', 'open')
+    ->select([
+        'id',
+        'title',
+        'status',
+        'deadline',
+        'size',
+        'skill_id',
+        'is_urgent',
+        'header_image',
+        'creator_id',
+        'target_city',
+        'target_country',
+        'target_province',
+    ])
+    ->withCount('ads')
+    ->with([
+        'skill:id,name',
+        'creator:id,avatar'
+    ]);
 
     if ($request->filled('skill_id')) {
         $query->where('skill_id', $request->skill_id);
@@ -88,53 +86,41 @@ public function feed(Request $request)
         $query->where('size', $request->size);
     }
 
-    if ($request->filled('province')) {
-        $query->where('target_province', 'LIKE', '%' . $request->province . '%');
-    }
-
-    // orden
     $query->orderByDesc('ads_count');
     $query->orderByDesc('is_urgent');
 
-    if ($request->filled('order_deadline')) {
-        $query->orderBy('deadline', $request->order_deadline);
-    } else {
-        $query->orderBy('deadline', 'asc');
-    }
+    $surprises = $query->get()->map(function ($s) {
 
-    if ($request->filled('order_size')) {
-        $query->orderByRaw("
-            CASE size
-                WHEN 'SMALL' THEN 1
-                WHEN 'MEDIUM' THEN 2
-                WHEN 'LARGE' THEN 3
-                WHEN 'PREMIUM' THEN 4
-                ELSE 99
-            END " . ($request->order_size === 'desc' ? 'DESC' : 'ASC')
-        );
-    }
+        $xp = 10;
 
-    $surprises = $query->get()->map(function ($surprise) {
+        if ($s->size === 'MEDIUM') $xp += 10;
+        if ($s->size === 'LARGE') $xp += 20;
+        if ($s->size === 'PREMIUM') $xp += 40;
 
-        $xp = 10; // base XP
+        if ($s->is_urgent) $xp += 15;
+        if ($s->ads_count > 0) $xp += 15;
 
-        // tamaño
-        if ($surprise->size === 'MEDIUM') $xp += 10;
-        if ($surprise->size === 'LARGE') $xp += 20;
-        if ($surprise->size === 'PREMIUM') $xp += 40;
+        return [
+    'id' => $s->id,
+    'title' => $s->title,
+    'status' => $s->status,
+    'size' => $s->size,
+    'deadline' => $s->deadline,
+    'is_urgent' => (bool) $s->is_urgent,
+    'header_image' => $s->header_image,
 
-        // urgencia
-        if ($surprise->is_urgent) $xp += 15;
+            'location' => [
+                'city' => $s->target_city,
+                'province' => $s->target_province,
+                'country' => $s->target_country,
+            ],
 
-        // ads (valor añadido de marketplace)
-        if ($surprise->ads_count > 0) $xp += 10;
+            'skill' => $s->skill,
+            'creator' => $s->creator,
 
-        // opcional: bonus si está destacada
-        if ($surprise->ads_count > 0) $xp += 5;
-
-        $surprise->xp_value = $xp;
-
-        return $surprise;
+            'ads_count' => $s->ads_count,
+            'xp_value' => $xp,
+        ];
     });
 
     return response()->json([
@@ -189,7 +175,11 @@ $validated = $request->validate([
     'size' => 'required|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
     'is_urgent' => 'nullable|boolean',
     'highlight' => 'nullable|boolean',
-    'header_image' => 'required'
+    'header_image' => 'nullable|image|max:4096',
+
+    'target_country' => 'nullable|string|max:100',
+    'target_province' => 'nullable|string|max:100',
+    'target_city' => 'nullable|string|max:100',
 ]);
 
 
@@ -203,17 +193,20 @@ if (!isset($validated['is_urgent']) || $validated['is_urgent'] === null) {
         // ============================
         // SANITIZACIÓN
         // ============================
-        $validated['title'] = SanitizerService::clean($validated['title']);
-        $validated['description'] = SanitizerService::clean($validated['description']);
+      foreach (['title', 'description', 'target_country', 'target_province', 'target_city'] as $field) {
+    if (isset($validated[$field])) {
+        $validated[$field] = SanitizerService::clean($validated[$field]);
+    }
+}
 
         // ============================
         // IMAGEN DE CABECERA
         // ============================
-      if ($request->hasFile('header_image')) {
+     if ($request->hasFile('header_image')) {
     $path = $request->file('header_image')->store('surprises/headers', 'public');
     $validated['header_image'] = $path;
 } else {
-    $validated['header_image'] = $request->input('header_image');
+    unset($validated['header_image']);
 }
 
         // ============================

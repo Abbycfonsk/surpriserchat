@@ -12,7 +12,9 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 class User extends Authenticatable implements MustVerifyEmail
 {
     use HasFactory, HasApiTokens, Notifiable;
-
+protected $appends = [
+    'avatar_url',
+];
    protected $fillable = [
     'name',
     'email',
@@ -191,4 +193,12 @@ public function canAcceptMoreSurprises(): bool
     {
         return $this->genius_level === 'SULTAN';
     }
+    public function getAvatarUrlAttribute()
+{
+    if (!$this->avatar) {
+        return null;
+    }
+
+    return asset('storage/' . $this->avatar);
+}
 }

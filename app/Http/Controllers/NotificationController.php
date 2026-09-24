@@ -91,4 +91,31 @@ public function sendAdsSummary()
             'message' => 'All notifications marked as read'
         ]);
     }
+    public function destroy($id)
+{
+    $notification = Notification::where('id', $id)
+        ->where('user_id', auth()->id())
+        ->firstOrFail();
+
+    $notification->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Notification deleted',
+    ]);
+}
+
+public function destroyAll($id)
+{
+    if ((int) $id !== auth()->id()) {
+        abort(403);
+    }
+
+    Notification::where('user_id', $id)->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'All notifications deleted',
+    ]);
+}
 }

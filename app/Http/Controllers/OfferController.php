@@ -137,6 +137,7 @@ class OfferController extends Controller
     // Listar ofertas de una sorpresa
     public function listBySurprise($surpriseId)
     {
+
         $offers = Offer::where('surprise_id', $surpriseId)
             ->with(['genius', 'bids'])
             ->get();

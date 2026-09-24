@@ -225,6 +225,8 @@ Route::get('/creator/package/history', [CreatorPackageController::class, 'histor
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/users/{id}/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::get('/users/{id}/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+    Route::delete('/users/{id}/notifications', [NotificationController::class, 'destroyAll']);  
     /* -------------------------
      *  REVIEWS
      * ------------------------- */
