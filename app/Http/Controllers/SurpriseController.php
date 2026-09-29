@@ -177,9 +177,9 @@ $validated = $request->validate([
     'highlight' => 'nullable|boolean',
     'header_image' => 'nullable|image|max:4096',
 
-    'target_country' => 'nullable|string|max:100',
-    'target_province' => 'nullable|string|max:100',
-    'target_city' => 'nullable|string|max:100',
+   'target_country' => 'required|string|max:100',
+'target_province' => 'required|string|max:100',
+'target_city' => 'required|string|max:100',
 ]);
 
 
@@ -302,8 +302,15 @@ public function update(Request $request, $id)
     $surprise = Surprise::findOrFail($id);
     $user = $request->user();
 
-    $isCreator = $user->id === $surprise->creator_id;
-    $isGenius = $user->id === $surprise->genius_id;
+    \Log::info('PERMISOS UPDATE SURPRISE', [
+    'authenticated_user' => $user?->id,
+    'creator_id' => $surprise->creator_id,
+    'genius_id' => $surprise->genius_id,
+    'status' => $surprise->status,
+]);
+
+   $isCreator = (int) $user->id === (int) $surprise->creator_id;
+$isGenius = (int) $user->id === (int) $surprise->genius_id;
 
     // El genio NO puede modificar
     if ($isGenius) {
@@ -327,25 +334,23 @@ public function update(Request $request, $id)
 
     // Validación según estado
     $rules = [];
-
-    if ($surprise->status === 'open') {
-        $rules = [
-            'title' => 'nullable|string|max:200',
-            'description' => 'nullable|string',
-            'price' => 'nullable|numeric|min:1',
-            'deadline' => 'nullable|date',
-            'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
-            'is_urgent' => 'nullable|boolean',
-            'target_name' => 'nullable|string|max:100',
-            'target_city' => 'nullable|string|max:100',
-            'target_country' => 'nullable|string|max:100',
-            'target_lat' => 'nullable|numeric',
-            'target_lng' => 'nullable|numeric',
-
-            // Puede ser string (galería) o file (personalizada)
-            'header_image' => 'nullable'
-        ];
-    }
+if ($surprise->status === 'open') {
+    $rules = [
+        'title' => 'nullable|string|max:200',
+        'description' => 'nullable|string',
+        'price' => 'nullable|numeric|min:1',
+        'deadline' => 'nullable|date',
+        'size' => 'nullable|string|in:SMALL,MEDIUM,LARGE,PREMIUM',
+        'is_urgent' => 'nullable|boolean',
+        'target_name' => 'nullable|string|max:100',
+        'target_city' => 'nullable|string|max:100',
+        'target_province' => 'nullable|string|max:100',
+        'target_country' => 'nullable|string|max:100',
+        'target_lat' => 'nullable|numeric',
+        'target_lng' => 'nullable|numeric',
+        'header_image' => 'nullable',
+    ];
+}
 
     if ($surprise->status === 'in_progress') {
         $rules = [

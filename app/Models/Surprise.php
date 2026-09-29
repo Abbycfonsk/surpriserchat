@@ -8,27 +8,28 @@ class Surprise extends Model
 {
     protected $table = 'surprises';
 
-    protected $fillable = [
-        'creator_id',
-        'genius_id',
-        'skill_id',
-        'title',
-        'description',
-        'status',
-        'price',
-        'deadline',
-        'size',
-        'is_urgent',
-        'header_image',
-        'target_name',
-        'target_city',
-        'target_country',
-        'target_lat',
-        'target_lng',
-        'price_creator',
-        'price_genius',
-        'final_price'
-    ];
+   protected $fillable = [
+    'creator_id',
+    'genius_id',
+    'skill_id',
+    'title',
+    'description',
+    'status',
+    'price',
+    'deadline',
+    'size',
+    'is_urgent',
+    'header_image',
+    'target_name',
+    'target_city',
+    'target_province',
+    'target_country',
+    'target_lat',
+    'target_lng',
+    'price_creator',
+    'price_genius',
+    'final_price',
+];
     public function creator()
     {
         return $this->belongsTo(User::class, 'creator_id');
