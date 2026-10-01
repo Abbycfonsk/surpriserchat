@@ -258,6 +258,11 @@ Route::get('/creator/package/history', [CreatorPackageController::class, 'histor
     Route::get('/skills/{skillId}/genius-suggestions', [GeniusController::class, 'suggest']);
 });
 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/genius/feed', [GeniusController::class, 'feed']);
+    Route::get('/genius/{geniusId}/dashboard', [GeniusController::class, 'dashboard']);
+    Route::get('/genius/offers', [OfferController::class, 'myOffers']);
+});
 
 /* ============================================================
  *  GENIUS-ONLY ROUTES (auth + check.suspended)

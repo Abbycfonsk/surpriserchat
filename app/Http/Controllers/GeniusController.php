@@ -44,8 +44,17 @@ public function feed(Request $request)
 {
     $genius = $request->user();
 
-    // Skills del genio
-    $skills = $genius->skills->pluck('id')->toArray();
+   
+    if (!$genius) {
+        return response()->json([
+            'success' => false,
+            'error' => 'Usuario no autenticado'
+        ], 401);
+    }
+ // Skills del genio
+    $skills = $genius->activeSkills()
+        ->pluck('skills.id')
+        ->toArray();
     $now = now();
 
     // Obtener sorpresas con ads activos

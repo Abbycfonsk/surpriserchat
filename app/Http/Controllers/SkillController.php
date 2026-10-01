@@ -23,22 +23,27 @@ class SkillController extends Controller
 
     // POST /users/{id}/proposed-skills
     public function updateProposedSkills(Request $request, $userId)
-    {
-        $request->validate([
-            'skills' => 'required|array',
-            'skills.*' => 'exists:skills,id'
-        ]);
+{
+    $user = $request->user();
 
-        $user = User::findOrFail($userId);
-
-        // Sincronizar skills propuestas
-        $user->proposedSkills()->sync($request->skills);
-
+    if (!$user || (int) $user->id !== (int) $userId) {
         return response()->json([
-            'success' => true,
-            'message' => 'Proposed skills updated'
-        ]);
+            'error' => 'No autorizado'
+        ], 403);
     }
+
+    $validated = $request->validate([
+        'skills' => 'present|array',
+        'skills.*' => 'exists:skills,id',
+    ]);
+
+    $user->proposedSkills()->sync($validated['skills'] ?? []);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Proposed skills updated',
+    ]);
+}
 
     // ============================
     //  VER SKILLS DEL GENIO
