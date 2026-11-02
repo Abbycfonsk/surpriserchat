@@ -58,12 +58,14 @@ public function feed(Request $request)
     $now = now();
 
     // Obtener sorpresas con ads activos
-    $surprises = Surprise::with([
-        'ads' => function ($q) {
-            $q->where('is_active', 1)
-              ->orderBy('priority', 'desc'); // el ad más importante primero
-        }
-    ])
+ $surprises = Surprise::with([
+    'skill:id,name',
+    'creator:id,name,avatar',
+    'ads' => function ($q) {
+        $q->where('is_active', 1)
+          ->orderBy('priority', 'desc');
+    }
+])
     ->where('status', 'open')
     ->whereIn('skill_id', $skills)
     ->get()
@@ -106,7 +108,21 @@ public function feed(Request $request)
         ];
     })
     ->values();
+$surprises = $surprises
+    ->map(function ($surprise) {
+        $data = $surprise->toArray();
 
+        $data['location'] = [
+            'city' => $surprise->target_city,
+            'province' => $surprise->target_province,
+            'country' => $surprise->target_country,
+        ];
+
+        $data['xp_value'] = $surprise->xp_value ?? 0;
+
+        return $data;
+    })
+    ->values();
     return response()->json([
         'success' => true,
         'data' => $surprises

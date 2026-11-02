@@ -82,11 +82,37 @@ public function destroy(Request $request, $id)
     $surprise = $file->surprise;
     $user = $request->user();
 
-    if ($user->id !== $surprise->creator_id && $user->id !== $surprise->genius_id) {
-        return response()->json(['error' => 'No autorizado'], 403);
+    if (!$user) {
+        return response()->json([
+            'error' => 'No autenticado'
+        ], 401);
     }
 
-    if ($file->path && Storage::disk('public')->exists($file->path)) {
+    if (
+        $user->id !== $surprise->creator_id &&
+        $user->id !== $surprise->genius_id
+    ) {
+        return response()->json([
+            'error' => 'No autorizado'
+        ], 403);
+    }
+
+    if (!$file->uploader_id) {
+        return response()->json([
+            'error' => 'Este archivo no tiene propietario registrado'
+        ], 403);
+    }
+
+    if ((int) $file->uploader_id !== (int) $user->id) {
+        return response()->json([
+            'error' => 'Solo puedes eliminar archivos subidos por ti'
+        ], 403);
+    }
+
+    if (
+        $file->path &&
+        Storage::disk('public')->exists($file->path)
+    ) {
         Storage::disk('public')->delete($file->path);
     }
 
@@ -154,6 +180,7 @@ public function destroy(Request $request, $id)
             'size' => $request->file('file')->getSize(),
             'file_url' => $url,
             'file_type' => $type,
+            'uploader_id' => $user->id,
         ]);
         AuditService::log(
             'file_uploaded',

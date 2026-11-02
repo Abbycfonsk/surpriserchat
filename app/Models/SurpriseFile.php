@@ -9,15 +9,16 @@ class SurpriseFile extends Model
     protected $table = 'surprise_files';
     public $timestamps = false;
 
-    protected $fillable = [
-        'surprise_id',
-        'filename',
-        'path',
-        'mime',
-        'size',
-        'file_url',
-        'file_type',
-    ];
+  protected $fillable = [
+    'surprise_id',
+    'uploader_id',
+    'filename',
+    'path',
+    'mime',
+    'size',
+    'file_url',
+    'file_type',
+];
 
 
     public function surprise()
