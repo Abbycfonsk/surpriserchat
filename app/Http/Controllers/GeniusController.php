@@ -128,6 +128,34 @@ $surprises = $surprises
         'data' => $surprises
     ]);
 }
+public function history(Request $request)
+{
+    $user = $request->user();
+
+    if (!$user) {
+        return response()->json([
+            'error' => 'Usuario no autenticado'
+        ], 401);
+    }
+
+    $surprises = Surprise::with([
+        'skill:id,name',
+        'creator:id,name,avatar',
+    ])
+        ->where('genius_id', $user->id)
+        ->whereIn('status', [
+            'completed',
+            'cancelled',
+            'canceled',
+        ])
+        ->orderByDesc('updated_at')
+        ->get();
+
+    return response()->json([
+        'success' => true,
+        'data' => $surprises,
+    ]);
+}
     public function suggest($skillId)
     {
         // 1. Genius que tienen esta skill

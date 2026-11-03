@@ -18,6 +18,17 @@ class OfferController extends Controller
 {
     $surprise = Surprise::findOrFail($surpriseId);
     $user = $request->user();
+    if (!$user) {
+    return response()->json([
+        'error' => 'Usuario no autenticado'
+    ], 401);
+}
+
+if ((int) $surprise->creator_id === (int) $user->id) {
+    return response()->json([
+        'error' => 'No puedes hacer una oferta sobre tu propia sorpresa'
+    ], 403);
+}
 
     // 1) Solo si la sorpresa está OPEN
     if ($surprise->status !== 'open') {
@@ -147,16 +158,54 @@ class OfferController extends Controller
             'data' => $offers
         ]);
     }
-    public function myOffers(Request $request)
+public function myOffers(Request $request)
 {
-    $offers = Offer::where('genius_id', $request->user()->id)
-        ->with(['surprise.skill', 'surprise.creator', 'bids'])
-        ->orderBy('created_at', 'desc')
+    $user = $request->user();
+
+    if (!$user) {
+        return response()->json([
+            'error' => 'Usuario no autenticado'
+        ], 401);
+    }
+
+    $offers = Offer::with([
+        'surprise.skill',
+        'surprise.creator',
+        'bids',
+    ])
+        ->where('genius_id', $user->id)
+        ->whereHas('surprise', function ($query) {
+            $query->whereIn('status', [
+                'open',
+                'in_progress',
+                'delivered',
+            ]);
+        })
+        ->where(function ($query) {
+            // Ofertas enviadas o en negociación
+            $query->whereIn('status', [
+                'pending',
+                'negotiating',
+            ]);
+
+            // Ofertas aceptadas durante los últimos 10 días
+            $query->orWhere(function ($acceptedQuery) {
+                $acceptedQuery
+                    ->where('status', 'accepted')
+                    ->whereNotNull('accepted_at')
+                    ->where(
+                        'accepted_at',
+                        '>=',
+                        now()->subDays(10)
+                    );
+            });
+        })
+        ->orderByDesc('updated_at')
         ->get();
 
     return response()->json([
         'success' => true,
-        'data' => $offers
+        'data' => $offers,
     ]);
 }
 
@@ -164,6 +213,19 @@ class OfferController extends Controller
     public function counterOffer(Request $request, $offerId)
     {
         $offer = Offer::with('surprise')->findOrFail($offerId);
+        if (!in_array($offer->status, [
+    'pending',
+    'negotiating',
+])) {
+    return response()->json([
+        'error' => 'Esta oferta ya no admite contraofertas'
+    ], 400);
+}
+if ($offer->surprise->status !== 'open') {
+    return response()->json([
+        'error' => 'La negociación ya está cerrada'
+    ], 400);
+}
         $user = $request->user();
         $surprise = $offer->surprise;
 
@@ -292,8 +354,9 @@ class OfferController extends Controller
         }
 
         // Marcar oferta como aceptada
-        $offer->status = 'accepted';
-        $offer->save();
+       $offer->status = 'accepted';
+$offer->accepted_at = now();
+$offer->save();
 
         // Asignar genius a la sorpresa
         $surprise->genius_id = $offer->genius_id;

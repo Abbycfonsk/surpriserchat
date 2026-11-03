@@ -190,6 +190,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/offers/{offerId}/counter', [OfferController::class, 'counterOffer']);
     Route::post('/offers/{offerId}/accept', [OfferController::class, 'accept']);
     Route::get('/genius/offers', [OfferController::class, 'myOffers']);
+    Route::get(
+    '/genius/history',
+    [GeniusController::class, 'history']
+);
  /* -------------------------
      *  ADS
      * ------------------------- */
