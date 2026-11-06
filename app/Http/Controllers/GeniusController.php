@@ -12,117 +12,132 @@ class GeniusController extends Controller
 {
     public function dashboard($geniusId)
 {
-    // Últimas 10 sorpresas completadas por este genio
     $surprises = Surprise::with([
         'skill:id,name',
-        'review:id,surprise_id,rating,comment',
-        'files:id,surprise_id,file_path,file_type'
     ])
-    ->where('genius_id', $geniusId)
-    ->where('status', 'completed')
-    ->orderBy('completed_at', 'desc')
-    ->limit(10)
-    ->get([
-        'id',
-        'title',
-        'description',
-        'size',
-        'skill_id',
-        'started_at',
-        'delivered_at',
-        'completed_at',
-        'hours_spent',
-        'final_price'
-    ]);
+        ->where('genius_id', $geniusId)
+        ->where('status', 'completed')
+        ->orderByDesc('completed_at')
+        ->limit(10)
+        ->get([
+            'id',
+            'title',
+            'description',
+            'size',
+            'skill_id',
+            'created_at',
+            'started_at',
+            'delivered_at',
+            'completed_at',
+            'hours_spent',
+            'final_price',
+            'target_city',
+            'target_province',
+            'target_country',
+        ]);
 
     return response()->json([
         'success' => true,
-        'data' => $surprises
+        'data' => $surprises,
     ]);
 }
 public function feed(Request $request)
 {
     $genius = $request->user();
 
-   
     if (!$genius) {
         return response()->json([
             'success' => false,
             'error' => 'Usuario no autenticado'
         ], 401);
     }
- // Skills del genio
-    $skills = $genius->activeSkills()
-        ->pluck('skills.id')
+
+    // Skills activas del genio
+    $activeSkillIds = $genius->activeSkills()
+        ->pluck('skills.id');
+
+    // Skills propuestas todavía no activadas
+    $proposedSkillIds = $genius->proposedSkills()
+        ->pluck('skills.id');
+
+    // Unificar sin duplicados
+    $skillIds = $activeSkillIds
+        ->merge($proposedSkillIds)
+        ->unique()
+        ->values()
         ->toArray();
+
     $now = now();
 
-    // Obtener sorpresas con ads activos
- $surprises = Surprise::with([
-    'skill:id,name',
-    'creator:id,name,avatar',
-    'ads' => function ($q) {
-        $q->where('is_active', 1)
-          ->orderBy('priority', 'desc');
-    }
-])
-    ->where('status', 'open')
-    ->whereIn('skill_id', $skills)
-    ->get()
-    ->filter(function ($s) use ($now) {
-
-        // Si no tiene ads → sorpresa normal → visible
-        if ($s->ads->isEmpty()) {
-            return true;
+    $surprises = Surprise::with([
+        'skill:id,name',
+        'creator:id,name,avatar',
+        'ads' => function ($q) {
+            $q->where('is_active', 1)
+                ->orderBy('priority', 'desc');
         }
+    ])
+        ->where('status', 'open')
+        ->where('creator_id', '!=', $genius->id)
+        ->whereIn('skill_id', $skillIds)
+        ->get()
+        ->filter(function ($surprise) use ($now) {
 
-        // Tomar el ad activo con mayor prioridad
-        $ad = $s->ads->first();
+            // Sin anuncio: visible como sorpresa normal
+            if ($surprise->ads->isEmpty()) {
+                return true;
+            }
 
-        // Si expiró → no mostrar
-        if ($ad->expires_at->isPast()) {
-            return false;
-        }
+            $ad = $surprise->ads->first();
 
-        // Early access
-        $early = $ad->early_access_hours ?? 0;
-
-        if ($early > 0) {
-            $visibleAt = $ad->activated_at->copy()->addHours($early);
-
-            // Si aún no es visible → ocultar
-            if ($now->lt($visibleAt)) {
+            // Anuncio expirado
+            if ($ad->expires_at && $ad->expires_at->isPast()) {
                 return false;
             }
-        }
 
-        return true;
-    })
-    ->sortByDesc(function ($s) {
-        $ad = $s->ads->first();
+            // Acceso anticipado
+            $earlyAccessHours = $ad->early_access_hours ?? 0;
 
-        return [
-            $s->is_urgent ? 1 : 0,          // urgentes primero
-            $ad->priority ?? 0,             // prioridad del plan
-            $s->created_at->timestamp       // más recientes después
-        ];
-    })
-    ->values();
-$surprises = $surprises
-    ->map(function ($surprise) {
-        $data = $surprise->toArray();
+            if (
+                $earlyAccessHours > 0 &&
+                $ad->activated_at
+            ) {
+                $visibleAt = $ad->activated_at
+                    ->copy()
+                    ->addHours($earlyAccessHours);
 
-        $data['location'] = [
-            'city' => $surprise->target_city,
-            'province' => $surprise->target_province,
-            'country' => $surprise->target_country,
-        ];
+                if ($now->lt($visibleAt)) {
+                    return false;
+                }
+            }
 
-        $data['xp_value'] = $surprise->xp_value ?? 0;
+            return true;
+        })
+        ->sortByDesc(function ($surprise) {
+            $ad = $surprise->ads->first();
 
-        return $data;
-    })
-    ->values();
+            return [
+                $surprise->is_urgent ? 1 : 0,
+                $ad->priority ?? 0,
+                optional($surprise->created_at)->timestamp ?? 0,
+            ];
+        })
+        ->values()
+        ->map(function ($surprise) {
+            $data = $surprise->toArray();
+
+            $data['location'] = [
+                'city' => $surprise->target_city,
+                'province' => $surprise->target_province,
+                'country' => $surprise->target_country,
+            ];
+
+            $data['xp_value'] = $surprise->xp_value ?? 0;
+
+            return $data;
+        })
+        ->values();
+
     return response()->json([
         'success' => true,
         'data' => $surprises
